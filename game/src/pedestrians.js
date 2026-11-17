@@ -1,119 +1,52 @@
-// pedestrians.js — AI pedestrians strolling the sidewalks of Solmar City.
-// Capsule people in bright clothes who wander block to block and scatter
-// when a car comes at them or a shot rings out.
+// pedestrians.js — AI walkers strolling the sidewalks of Solmar City.
 import * as THREE from 'three';
+import { ROADS, mulberry32 } from './city.js';
 
-const SHIRT_COLORS = [0xff6b6b, 0xffd93d, 0x6bcb77, 0x4d96ff, 0xff9f45, 0xc780fa, 0xffffff, 0x2ec4b6];
-const SKIN_COLORS = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac];
-
-export class Pedestrian {
-  constructor(scene, x, z, rng) {
-    this.rng = rng;
-    const shirt = SHIRT_COLORS[Math.floor(rng() * SHIRT_COLORS.length)];
-    const skin = SKIN_COLORS[Math.floor(rng() * SKIN_COLORS.length)];
-    this.group = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.42, 0.85, 4, 8),
-      new THREE.MeshLambertMaterial({ color: shirt }),
-    );
-    body.position.y = 1.0;
-    this.group.add(body);
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.3, 10, 10),
-      new THREE.MeshLambertMaterial({ color: skin }),
-    );
-    head.position.y = 1.85;
-    this.group.add(head);
-    // Legs swing while walking.
-    this.legL = new THREE.Mesh(
-      new THREE.BoxGeometry(0.18, 0.7, 0.18),
-      new THREE.MeshLambertMaterial({ color: 0x222233 }),
-    );
-    this.legL.position.set(-0.16, 0.35, 0);
-    this.group.add(this.legL);
-    this.legR = this.legL.clone();
-    this.legR.position.x = 0.16;
-    this.group.add(this.legR);
-
-    this.pos = new THREE.Vector3(x, 0, z);
-    this.group.position.copy(this.pos);
-    this.heading = rng() * Math.PI * 2;
-    this.speed = 1.1 + rng() * 0.9;
-    this.walkPhase = rng() * Math.PI * 2;
-    this.target = null;
-    this.fleeing = 0;
-    this.pickTarget();
-    scene.add(this.group);
-  }
-
-  pickTarget() {
-    // Next sidewalk corner: snap to a road line, offset onto the sidewalk.
-    const t = (this.rng() * 2 - 1) * 220;
-    const line = [-230, -184, -138, -92, -46, 0, 46, 92, 138, 184, 230][
-      Math.floor(this.rng() * 11)];
-    if (this.rng() < 0.5) this.target = new THREE.Vector3(t, 0, line + 9.5);
-    else this.target = new THREE.Vector3(line + 9.5, 0, t);
-  }
-
-  scareAwayFrom(from, strength = 1) {
-    const away = new THREE.Vector3().copy(this.pos).sub(from);
-    away.y = 0;
-    if (away.lengthSq() < 0.01) away.set(1, 0, 0);
-    away.normalize();
-    this.target = new THREE.Vector3().copy(this.pos).addScaledVector(away, 30 * strength);
-    this.fleeing = 3;
-    this.speed = 3.4;
-  }
-
-  update(dt, frozen) {
-    if (frozen) return;
-    if (this.fleeing > 0) {
-      this.fleeing -= dt;
-      if (this.fleeing <= 0) this.speed = 1.1 + this.rng() * 0.9;
-    }
-    const to = new THREE.Vector3().copy(this.target).sub(this.pos);
-    to.y = 0;
-    const dist = to.length();
-    if (dist < 1.2) {
-      this.pickTarget();
-      return;
-    }
-    to.normalize();
-    const wantHeading = Math.atan2(-to.x, -to.z);
-    let dh = wantHeading - this.heading;
-    while (dh > Math.PI) dh -= Math.PI * 2;
-    while (dh < -Math.PI) dh += Math.PI * 2;
-    this.heading += Math.max(-3 * dt, Math.min(3 * dt, dh));
-    this.pos.addScaledVector(to, this.speed * dt);
-    this.group.position.copy(this.pos);
-    this.group.rotation.y = this.heading;
-    this.walkPhase += dt * this.speed * 4;
-    this.legL.rotation.x = Math.sin(this.walkPhase) * 0.55;
-    this.legR.rotation.x = -Math.sin(this.walkPhase) * 0.55;
+const SHIRTS = [0xe84a5a, 0x4a8ae8, 0x4ae88a, 0xe8c84a, 0x9a4ae8, 0xe8e8e8, 0x4ad8e8, 0xe88a4a];
+export function makePedMesh(shirt) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.45, 0.9, 4, 8), new THREE.MeshLambertMaterial({ color: shirt }));
+  body.position.y = 1.15; g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), new THREE.MeshLambertMaterial({ color: 0xd8a878 }));
+  head.position.y = 2.15; g.add(head);
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 0.3), new THREE.MeshLambertMaterial({ color: 0x2a2a34 }));
+  legs.position.y = 0.35; g.add(legs);
+  return g;
+}
+export function spawnPedestrians(G) {
+  const rng = mulberry32(777);
+  for (let i = 0; i < 26; i++) {
+    const mesh = makePedMesh(SHIRTS[i % SHIRTS.length]);
+    const road = ROADS[Math.floor(rng() * ROADS.length)];
+    const along = -220 + rng() * 440;
+    const horizontal = rng() > 0.5;
+    const side = (rng() > 0.5 ? 9 : -9);
+    const pos = horizontal ? new THREE.Vector3(along, 0, road + side) : new THREE.Vector3(road + side, 0, along);
+    mesh.position.copy(pos);
+    G.scene.add(mesh);
+    G.peds.push({ mesh, heading: rng() * Math.PI * 2, speed: 1.2 + rng() * 1.2, horizontal, road, side, panic: 0, bob: rng() * 6 });
   }
 }
-
-export class PedestrianSystem {
-  constructor(scene, city, rng, count = 26) {
-    this.peds = [];
-    for (let i = 0; i < count; i++) {
-      const p = city.randomRoadPoint();
-      // randomRoadPoint lands on a road lane; step sideways onto the sidewalk.
-      const horizontal = Math.abs(p.z - city.nearestRoadLine(p.z)) < 4.5;
-      const side = Math.random() < 0.5 ? 1 : -1;
-      const x = horizontal ? p.x : p.x + side * 9.5;
-      const z = horizontal ? p.z + side * 9.5 : p.z;
-      this.peds.push(new Pedestrian(scene, x, z, rng));
+export function updatePedestrians(G, dt) {
+  const pp = G.player.group.position;
+  for (const p of G.peds) {
+    const d = p.mesh.position.distanceTo(pp);
+    let speed = p.speed;
+    if (d < 6 && (G.player.car || G.wanted > 0)) { p.panic = 2; }
+    if (p.panic > 0) {
+      p.panic -= dt; speed = 4;
+      const away = p.mesh.position.clone().sub(pp).setY(0).normalize();
+      p.heading = Math.atan2(away.x, away.z);
+    } else if (Math.random() < dt * 0.05) {
+      p.heading += (Math.random() - 0.5) * 1.5;
     }
-  }
-
-  update(dt, frozen) {
-    for (const p of this.peds) p.update(dt, frozen);
-  }
-
-  scareNear(pos, radius) {
-    for (const p of this.peds) {
-      if (p.pos.distanceTo(pos) < radius) p.scareAwayFrom(pos);
-    }
+    p.mesh.position.x += Math.sin(p.heading) * speed * dt;
+    p.mesh.position.z += Math.cos(p.heading) * speed * dt;
+    p.mesh.position.x = THREE.MathUtils.clamp(p.mesh.position.x, -250, 250);
+    p.mesh.position.z = THREE.MathUtils.clamp(p.mesh.position.z, -250, 250);
+    p.mesh.rotation.y = p.heading;
+    p.bob += dt * speed * 3;
+    p.mesh.position.y = Math.abs(Math.sin(p.bob)) * 0.08;
+    p.mesh.rotation.z = Math.sin(p.bob) * 0.05;
   }
 }

@@ -1,10 +1,11 @@
-// SOLMAR HEAT — a gta6-01 entry (Node 22, standard library only).
-// The game is this directory's game/ folder: plain static files a desktop
-// browser loads offline (game/index.html and its ES modules, three.js
-// vendored under game/vendor/, no network request). This program hands it
-// in: it copies game/ and screenshots/ from beside this file to /output and
-// writes /output/dossier.json, the summary the judge reads, with the
-// vendored make.fun library.
+// SOLMAR HEAT — a working gta6-01 entry (Node 22, standard library only): the game is this
+// directory's game/ folder, plain static files a desktop browser loads offline (game/index.html
+// and its ES modules, three.js vendored under game/vendor/, no network request), and the program
+// hands it in. It copies game/ and screenshots/ from beside this file to /output and writes
+// /output/dossier.json, the summary the judge reads, with the vendored make.fun library.
+// SOLMAR HEAT is a complete open-world crime game: Solmar City with 4 districts, traffic and
+// pedestrians, stealable cars, a 1-5 star wanted system with pursuing police, a 6-mission story
+// ("The Solmar Job"), punch + gun combat, a HUD with a live minimap, a start screen and saves.
 //
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
