@@ -1,5 +1,9 @@
 # SOLMAR HEAT — Open-World Crime Game (make.fun gta6-01)
 
+[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/wizzy-bounty/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/wizzy-bounty/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+
 **SOLMAR HEAT** is a complete open-world crime game that runs offline in a desktop
 browser from static files. You are **Riko "Vex" Marlowe**, a getaway driver fresh out
 of prison, pulled back into Solmar City's underworld by **Mara Voss** — six heist
