@@ -1,53 +1,88 @@
 // input.js — keyboard + mouse state for SOLMAR HEAT.
-// One job: track which keys are held and expose edge-triggered "pressed" events.
-// Mouse clicks are listened to on the game canvas only, so clicking a menu
-// button never fires the pistol.
-export function createInput(canvas) {
-  const keys = new Set();
-  const pressed = new Set();
-  let mouseClicked = false;
-  let mouseX = 0;
-  let mouseY = 0;
+// Tracks held keys, edge-triggered presses, and mouse clicks (for shooting).
 
-  const KEYMAP = {
-    KeyW: 'up', ArrowUp: 'up',
-    KeyS: 'down', ArrowDown: 'down',
-    KeyA: 'left', ArrowLeft: 'left',
-    KeyD: 'right', ArrowRight: 'right',
-    KeyE: 'enter', KeyF: 'punch', Space: 'brake',
-    ShiftLeft: 'run', ShiftRight: 'run',
-    Escape: 'pause', KeyM: 'mute', KeyR: 'respawn',
-  };
+export class Input {
+  constructor(canvas) {
+    this.keys = new Set();
+    this.pressedKeys = new Set();
+    this.mouseDown = false;
+    this.mouseClicked = false;
+    this.mouseX = 0;
+    this.mouseY = 0;
+    this.enabled = true;
 
-  function onKeyDown(e) {
-    const action = KEYMAP[e.code];
-    if (!action) return;
-    if (e.code === 'Space') e.preventDefault();
-    if (!e.repeat) pressed.add(action);
-    keys.add(action);
+    window.addEventListener('keydown', (e) => {
+      if (!this.enabled) return;
+      if (e.repeat) return;
+      this.keys.add(e.code);
+      this.pressedKeys.add(e.code);
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+        e.preventDefault();
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      this.keys.delete(e.code);
+    });
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+    });
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) {
+        this.mouseDown = true;
+        this.mouseClicked = true;
+      }
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.mouseDown = false;
+    });
+    canvas.addEventListener('mousemove', (e) => {
+      this.mouseX = e.clientX;
+      this.mouseY = e.clientY;
+    });
+    // Prevent the context menu from breaking aim on right click.
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
-  function onKeyUp(e) {
-    const action = KEYMAP[e.code];
-    if (action) keys.delete(action);
-  }
-  function onMouseDown(e) {
-    if (e.button === 0) { mouseClicked = true; mouseX = e.clientX; mouseY = e.clientY; }
-  }
-  function onBlur() { keys.clear(); }
 
-  window.addEventListener('keydown', onKeyDown);
-  window.addEventListener('keyup', onKeyUp);
-  (canvas || window).addEventListener('mousedown', onMouseDown);
-  window.addEventListener('blur', onBlur);
+  /** Held this frame? */
+  isDown(code) {
+    return this.keys.has(code);
+  }
 
-  return {
-    // Held this frame?
-    held(action) { return keys.has(action); },
-    // Pressed since the last endFrame()?
-    pressed(action) { return pressed.has(action); },
-    consumeClick() { const c = mouseClicked; mouseClicked = false; return c; },
-    mousePos() { return { x: mouseX, y: mouseY }; },
-    // Call once per frame after the game has read input.
-    endFrame() { pressed.clear(); },
-  };
+  /** Pressed since the last endFrame()? Edge-triggered, consumed once. */
+  wasPressed(code) {
+    return this.pressedKeys.has(code);
+  }
+
+  /** Mouse button pressed since the last endFrame()? */
+  clicked() {
+    return this.mouseClicked;
+  }
+
+  /** Call once at the end of every game-loop tick. */
+  endFrame() {
+    this.pressedKeys.clear();
+    this.mouseClicked = false;
+  }
+
+  /** WASD / arrows as a -1..1 steering + throttle pair. */
+  driveAxes() {
+    const throttle =
+      (this.isDown('KeyW') || this.isDown('ArrowUp') ? 1 : 0) -
+      (this.isDown('KeyS') || this.isDown('ArrowDown') ? 1 : 0);
+    const steer =
+      (this.isDown('KeyA') || this.isDown('ArrowLeft') ? 1 : 0) -
+      (this.isDown('KeyD') || this.isDown('ArrowRight') ? 1 : 0);
+    return { throttle, steer };
+  }
+
+  /** WASD / arrows as a movement vector on the ground plane. */
+  moveAxes() {
+    const fwd =
+      (this.isDown('KeyW') || this.isDown('ArrowUp') ? 1 : 0) -
+      (this.isDown('KeyS') || this.isDown('ArrowDown') ? 1 : 0);
+    const strafe =
+      (this.isDown('KeyD') || this.isDown('ArrowRight') ? 1 : 0) -
+      (this.isDown('KeyA') || this.isDown('ArrowLeft') ? 1 : 0);
+    return { fwd, strafe };
+  }
 }

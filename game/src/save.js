@@ -1,19 +1,23 @@
-// save.js — localStorage save / load for SOLMAR HEAT.
-// One job: persist mission progress, money and position, and restore them.
+// save.js — localStorage save/load for SOLMAR HEAT: mission progress,
+// money, health, player position, wanted level, and time of day.
 const SAVE_KEY = 'solmar-heat-save-v1';
 
 export function saveGame(state) {
   try {
     const data = {
       version: 1,
-      savedAt: new Date().toISOString(),
-      missionIndex: state.missionIndex,
-      money: Math.floor(state.money),
+      savedAt: Date.now(),
+      money: state.money,
       health: state.health,
-      playerX: state.playerPos.x,
-      playerZ: state.playerPos.z,
+      mission: state.missions.serialize(),
+      player: {
+        x: state.player.pos.x,
+        z: state.player.pos.z,
+        heading: state.player.heading,
+      },
+      wanted: state.police.wanted,
       timeOfDay: state.timeOfDay,
-      missionsDone: state.missionsDone,
+      completedMissions: state.missions.completed,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     return true;
@@ -39,5 +43,7 @@ export function hasSave() {
 }
 
 export function clearSave() {
-  try { localStorage.removeItem(SAVE_KEY); } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(SAVE_KEY);
+  } catch { /* storage unavailable */ }
 }

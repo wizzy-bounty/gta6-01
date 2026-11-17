@@ -1,187 +1,227 @@
-// missions.js — "The Solmar Job": a 6-mission story chain with markers + dialogue.
-// One job: define the missions, track progress, and say what the player must do next.
+// missions.js — "The Solmar Job": a 6-mission story chain with markers,
+// Mara Voss dialogue, objectives, and payouts. Missions advance when the
+// player reaches the marker (or finishes the fight / escape for that job).
 import * as THREE from 'three';
 
 export const MISSIONS = [
   {
-    id: 1, name: 'MISSION 1 — FIRST GEAR', reward: 500,
-    task: 'Steal any car and drive to Mara’s garage',
-    dialog: [
-      ['Mara Voss', 'Vex. You’re out. I need a driver, not a saint. Steal a car — any car — and bring it to my garage.'],
-      ['Riko “Vex” Marlowe', 'One job, Mara. Then I’m done.'],
+    id: 1,
+    title: 'THE MEET',
+    objective: 'Meet Mara Voss at the Marina',
+    target: { x: -210, z: -40 },
+    radius: 8,
+    reward: 500,
+    dialogue: [
+      { speaker: 'MARA VOSS', line: 'Vex. You look terrible. Prison suits you.' },
+      { speaker: 'MARA VOSS', line: 'One last chain of jobs, then we both walk away rich. First: my crew needs wheels. Steal a car — any car — and bring the heat down.' },
     ],
-    target: 'garage', // city.garagePos
-    type: 'reachInCar',
   },
   {
-    id: 2, name: 'MISSION 2 — HOT WHEELS', reward: 800,
-    task: 'Pick up the package on the Neon Strip',
-    dialog: [
-      ['Mara Voss', 'A package is waiting on the Neon Strip. Pink neon, can’t miss it. Bring it back in one piece.'],
+    id: 2,
+    title: 'HOT WHEELS',
+    objective: 'Steal a sports car in the Neon Strip',
+    target: { x: 46, z: 46 },
+    radius: 10,
+    reward: 1200,
+    needsCar: 'sport',
+    dialogue: [
+      { speaker: 'MARA VOSS', line: 'The crew needs something fast. A sports car, Neon Strip, tonight. Don\'t get spotted lifting it — or do, I don\'t care.' },
     ],
-    target: 'neon',
-    type: 'reach',
   },
   {
-    id: 3, name: 'MISSION 3 — DOCKSIDE DEAL', reward: 1500,
-    task: 'Take out the dock crew and grab the cash',
-    dialog: [
-      ['Mara Voss', 'The dock crew skimmed my cut. Three of them, armed. Make it loud — Solmar needs to remember my name.'],
-      ['Riko “Vex” Marlowe', 'Loud it is.'],
+    id: 3,
+    title: 'THE DROP',
+    objective: 'Deliver the car to the Docks warehouse',
+    target: { x: 184, z: 184 },
+    radius: 10,
+    reward: 2000,
+    needsCar: true,
+    dialogue: [
+      { speaker: 'MARA VOSS', line: 'Warehouse at the Docks. Cops are thick tonight — lose them before you pull in, or the whole job burns.' },
     ],
-    target: 'docks',
-    type: 'combat',
-    enemies: 3,
   },
   {
-    id: 4, name: 'MISSION 4 — HEAT RISING', reward: 1200,
-    task: 'Lose the cops — reach the safehouse with 3 stars',
-    dialog: [
-      ['Mara Voss', 'The PD is all over the docks. Run, Vex — get to the safehouse and let the heat die down.'],
+    id: 4,
+    title: 'THE SNITCH',
+    objective: 'Deal with the snitch at the Old Town alley',
+    target: { x: -46, z: -138 },
+    radius: 9,
+    reward: 3500,
+    fight: true,
+    dialogue: [
+      { speaker: 'MARA VOSS', line: 'Somebody talked. A rat named Kessler is hiding in Old Town with two of his boys. Make it quiet. Make it final.' },
     ],
-    target: 'safehouse',
-    type: 'escape',
-    minWanted: 3,
   },
   {
-    id: 5, name: 'MISSION 5 — THE GETAWAY', reward: 2000,
-    task: 'Drive Mara to the casino yacht — 90 seconds',
-    dialog: [
-      ['Mara Voss', 'Get in. We’re going to the yacht. Drive like the whole city is watching — because it is.'],
+    id: 5,
+    title: 'THE GETAWAY',
+    objective: 'Outrun the Solmar PD — survive the 5-star chase',
+    target: { x: 0, z: -230 },
+    radius: 12,
+    reward: 6000,
+    chase: true,
+    dialogue: [
+      { speaker: 'MARA VOSS', line: 'They know. Every unit in the city is coming for you. Drive north, Vex — drive like the old days and don\'t stop for anything.' },
     ],
-    target: 'yacht',
-    type: 'timedDrive',
-    timeLimit: 90,
   },
   {
-    id: 6, name: 'MISSION 6 — THE SOLMAR JOB', reward: 5000,
-    task: 'Rob the casino yacht: drop the guards, grab the loot, escape to the Marina Tower',
-    dialog: [
-      ['Mara Voss', 'This is it. The vault on the yacht, four guards, one score that sets us free. Go, Vex.'],
-      ['Riko “Vex” Marlowe', 'For Solmar.'],
+    id: 6,
+    title: 'THE GILDED WAKE',
+    objective: 'Board the casino yacht and take the vault',
+    target: { x: -243, z: 30 },
+    radius: 9,
+    reward: 25000,
+    finale: true,
+    dialogue: [
+      { speaker: 'MARA VOSS', line: 'This is it. The Gilded Wake, the floating casino, one vault full of Solmar\'s dirty money. Walk up that pier like you own it.' },
+      { speaker: 'RIKO "VEX" MARLOWE', line: 'After this, Mara — I\'m done. For real this time.' },
     ],
-    target: 'yacht',
-    type: 'heist',
-    enemies: 4,
-    escapeTarget: 'tower',
   },
 ];
 
-export function createMissionState() {
-  return {
-    index: 0,                 // 0-based into MISSIONS
-    phase: 'idle',            // idle | active | done
-    timer: 0,                 // mission timer (timed missions)
-    enemiesLeft: 0,
-    lootGrabbed: false,
-    dialogQueue: [],
-    dialogShown: 0,
-    startedAt: 0,
-  };
-}
+export class MissionManager {
+  constructor(scene) {
+    this.scene = scene;
+    this.index = 0;             // 0-based into MISSIONS
+    this.completed = 0;
+    this.active = false;
+    this.dialogueQueue = [];
+    this.dialogueShown = false;
+    this.fightSpawned = false;
+    this.chaseTimer = 0;
+    this.finished = false;
 
-export function currentMission(state) {
-  return MISSIONS[Math.min(state.index, MISSIONS.length - 1)];
-}
-
-export function allMissionsDone(state) {
-  return state.index >= MISSIONS.length;
-}
-
-// Where the current mission wants the player to go (world position).
-export function missionTargetPos(mission, city) {
-  switch (mission.target) {
-    case 'garage': return city.garagePos;
-    case 'neon': return new THREE.Vector3(-160, 0, 160);
-    case 'docks': return city.docksPos;
-    case 'safehouse': return city.safehousePos;
-    case 'yacht': return new THREE.Vector3(-292, 0, -128); // the yacht pier (reachable)
-    default: return city.garagePos;
+    // Beacon: a glowing column + ring marking the objective.
+    this.beacon = new THREE.Group();
+    const column = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.6, 1.6, 60, 12, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: 0xffd23e, transparent: true, opacity: 0.22,
+        side: THREE.DoubleSide, depthWrite: false,
+      }),
+    );
+    column.position.y = 30;
+    this.beacon.add(column);
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(4, 0.35, 8, 32),
+      new THREE.MeshBasicMaterial({ color: 0xffd23e }),
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.4;
+    this.beacon.add(ring);
+    this.beacon.visible = false;
+    scene.add(this.beacon);
+    this.markerPulse = 0;
   }
-}
 
-export function missionEscapePos(mission, city) {
-  if (mission.escapeTarget === 'tower') return city.towerPos;
-  return null;
-}
-
-// Start the next mission: queue its dialogue and reset its counters.
-export function startMission(state, now) {
-  const m = currentMission(state);
-  state.phase = 'active';
-  state.startedAt = now;
-  state.timer = m.timeLimit || 0;
-  state.enemiesLeft = m.enemies || 0;
-  state.lootGrabbed = false;
-  state.dialogQueue = m.dialog.map(([speaker, text]) => ({ speaker, text }));
-  state.dialogShown = 0;
-  return m;
-}
-
-// Check completion. ctx: { playerPos, inCar, wanted, enemiesLeft, lootGrabbed, now }.
-// Returns 'complete' | 'failed' | null.
-export function checkMission(state, mission, ctx) {
-  if (state.phase !== 'active') return null;
-  const target = missionTargetPos(mission, ctx.city);
-  const d = Math.hypot(ctx.playerPos.x - target.x, ctx.playerPos.z - target.z);
-  switch (mission.type) {
-    case 'reachInCar':
-      if (d < 10 && ctx.inCar) return 'complete';
-      break;
-    case 'reach':
-      if (d < 8) return 'complete';
-      break;
-    case 'combat':
-      if (state.enemiesLeft <= 0 && d < 12) return 'complete';
-      break;
-    case 'escape':
-      if (ctx.wanted >= (mission.minWanted || 3) && d < 10) return 'complete';
-      break;
-    case 'timedDrive': {
-      const elapsed = ctx.now - state.startedAt;
-      if (elapsed > mission.timeLimit) return 'failed';
-      if (d < 12) return 'complete';
-      break;
-    }
-    case 'heist': {
-      const escape = missionEscapePos(mission, ctx.city);
-      if (state.enemiesLeft <= 0 && !state.lootGrabbed && d < 12) {
-        state.lootGrabbed = true; // stepped onto the yacht: loot grabbed
-        return null;
-      }
-      if (state.lootGrabbed && escape) {
-        const de = Math.hypot(ctx.playerPos.x - escape.x, ctx.playerPos.z - escape.z);
-        if (de < 12) return 'complete';
-      }
-      break;
-    }
-    default:
-      break;
+  get current() {
+    return MISSIONS[this.index] || null;
   }
-  return null;
-}
 
-// A glowing beacon cylinder + floating ring marking the mission target.
-export function makeBeacon(color = 0xffd23e) {
-  const g = new THREE.Group();
-  const beam = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.6, 2.2, 40, 12, 1, true),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }),
-  );
-  beam.position.y = 20;
-  g.add(beam);
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(3.2, 0.3, 8, 24),
-    new THREE.MeshBasicMaterial({ color }),
-  );
-  ring.rotation.x = Math.PI / 2;
-  ring.position.y = 0.4;
-  g.add(ring);
-  g.userData.ring = ring;
-  return g;
-}
+  start() {
+    this.active = true;
+    this.showMission(this.index);
+  }
 
-export function pulseBeacon(beacon, t) {
-  beacon.userData.ring.scale.setScalar(1 + Math.sin(t * 3) * 0.12);
-  beacon.rotation.y = t * 0.4;
+  showMission(i) {
+    const m = MISSIONS[i];
+    if (!m) {
+      this.beacon.visible = false;
+      this.finished = true;
+      return;
+    }
+    this.beacon.position.set(m.target.x, 0, m.target.z);
+    this.beacon.visible = true;
+    this.dialogueQueue = [...m.dialogue];
+    this.dialogueShown = false;
+    this.fightSpawned = false;
+    this.chaseTimer = 0;
+  }
+
+  // Called every tick. Returns an event object when something happens.
+  update(dt, playerPos, playerInCar, playerCarKind, enemiesAlive) {
+    if (!this.active || this.finished) return null;
+    const m = this.current;
+    if (!m) return null;
+    this.markerPulse += dt;
+    this.beacon.children[1].scale.setScalar(1 + Math.sin(this.markerPulse * 3) * 0.12);
+    this.beacon.children[0].material.opacity = 0.16 + Math.sin(this.markerPulse * 2) * 0.06;
+
+    // Fight missions: spawn the ambush once the player arrives.
+    if (m.fight && !this.fightSpawned) {
+      const d = Math.hypot(playerPos.x - m.target.x, playerPos.z - m.target.z);
+      if (d < m.radius + 14) {
+        this.fightSpawned = true;
+        return { type: 'spawn-fight', mission: m };
+      }
+      return null;
+    }
+    if (m.fight && this.fightSpawned) {
+      if (enemiesAlive === 0) return this.completeMission();
+      return null;
+    }
+    // Chase mission: survive at high wanted for 20 seconds, then reach the marker.
+    if (m.chase) {
+      this.chaseTimer += dt;
+      const d = Math.hypot(playerPos.x - m.target.x, playerPos.z - m.target.z);
+      if (this.chaseTimer > 20 && d < m.radius) return this.completeMission();
+      return { type: 'chase-tick', secondsLeft: Math.max(0, 20 - this.chaseTimer) };
+    }
+    // Normal missions: reach the marker (in the right car when required).
+    const d = Math.hypot(playerPos.x - m.target.x, playerPos.z - m.target.z);
+    if (d < m.radius) {
+      if (m.needsCar === 'sport' && !(playerInCar && playerCarKind === 'sport')) {
+        return { type: 'need-sport-car' };
+      }
+      if (m.needsCar === true && !playerInCar) {
+        return { type: 'need-car' };
+      }
+      return this.completeMission();
+    }
+    return null;
+  }
+
+  completeMission() {
+    const m = this.current;
+    this.completed += 1;
+    this.index += 1;
+    const next = this.current;
+    if (next) this.showMission(this.index);
+    else {
+      this.beacon.visible = false;
+      this.finished = true;
+    }
+    return { type: 'mission-complete', mission: m, reward: m.reward, next };
+  }
+
+  // Dialogue lines, one at a time, for the HUD to show.
+  nextDialogue() {
+    if (!this.dialogueShown) {
+      this.dialogueShown = true;
+      return this.dialogueQueue.shift() || null;
+    }
+    return this.dialogueQueue.shift() || null;
+  }
+
+  hasDialogue() {
+    return this.dialogueQueue.length > 0;
+  }
+
+  serialize() {
+    return { index: this.index, completed: this.completed, finished: this.finished };
+  }
+
+  restore(data) {
+    if (!data) return;
+    this.index = Math.max(0, Math.min(MISSIONS.length, data.index || 0));
+    this.completed = data.completed || 0;
+    this.finished = !!data.finished;
+    if (this.finished) {
+      this.beacon.visible = false;
+      this.active = false;
+    } else {
+      this.active = true;
+      this.showMission(this.index);
+    }
+  }
 }

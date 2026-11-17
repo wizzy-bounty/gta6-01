@@ -1,103 +1,119 @@
-// pedestrians.js — sidewalk walkers who stroll, chat and flee from danger.
-// One job: spawn pedestrians and walk them along sidewalk edges.
+// pedestrians.js — AI pedestrians strolling the sidewalks of Solmar City.
+// Capsule people in bright clothes who wander block to block and scatter
+// when a car comes at them or a shot rings out.
 import * as THREE from 'three';
-import { PITCH, GRID } from './city.js';
 
-const SHIRT_COLORS = [0xe8e8e8, 0xff7a1a, 0x2a7ad8, 0x22b573, 0xff5ad0, 0xffd23e, 0x8a5a2a, 0x444444];
+const SHIRT_COLORS = [0xff6b6b, 0xffd93d, 0x6bcb77, 0x4d96ff, 0xff9f45, 0xc780fa, 0xffffff, 0x2ec4b6];
+const SKIN_COLORS = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac];
 
-function makePedMesh(color) {
-  const g = new THREE.Group();
-  const shirt = new THREE.MeshLambertMaterial({ color });
-  const skin = new THREE.MeshLambertMaterial({ color: 0xd9a066 });
-  const pants = new THREE.MeshLambertMaterial({ color: 0x2a2a33 });
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.7, 4, 8), shirt);
-  body.position.y = 1.0;
-  g.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), skin);
-  head.position.y = 1.8;
-  g.add(head);
-  const legGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.6, 6);
-  const legL = new THREE.Mesh(legGeo, pants);
-  legL.position.set(-0.15, 0.3, 0);
-  g.add(legL);
-  const legR = new THREE.Mesh(legGeo, pants);
-  legR.position.set(0.15, 0.3, 0);
-  g.add(legR);
-  g.userData.legL = legL; g.userData.legR = legR;
-  return g;
-}
+export class Pedestrian {
+  constructor(scene, x, z, rng) {
+    this.rng = rng;
+    const shirt = SHIRT_COLORS[Math.floor(rng() * SHIRT_COLORS.length)];
+    const skin = SKIN_COLORS[Math.floor(rng() * SKIN_COLORS.length)];
+    this.group = new THREE.Group();
+    const body = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.42, 0.85, 4, 8),
+      new THREE.MeshLambertMaterial({ color: shirt }),
+    );
+    body.position.y = 1.0;
+    this.group.add(body);
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3, 10, 10),
+      new THREE.MeshLambertMaterial({ color: skin }),
+    );
+    head.position.y = 1.85;
+    this.group.add(head);
+    // Legs swing while walking.
+    this.legL = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.7, 0.18),
+      new THREE.MeshLambertMaterial({ color: 0x222233 }),
+    );
+    this.legL.position.set(-0.16, 0.35, 0);
+    this.group.add(this.legL);
+    this.legR = this.legL.clone();
+    this.legR.position.x = 0.16;
+    this.group.add(this.legR);
 
-export function createPedestrians(scene, rng, count = 30) {
-  const peds = [];
-  for (let i = 0; i < count; i++) {
-    const mesh = makePedMesh(SHIRT_COLORS[Math.floor(rng() * SHIRT_COLORS.length)]);
-    // start on a sidewalk edge: just off a road line
-    const alongNS = rng() < 0.5;
-    const road = (Math.floor(rng() * (GRID * 2 + 1)) - GRID) * PITCH;
-    const along = (Math.floor(rng() * (GRID * 2 + 1)) - GRID) * PITCH + (rng() - 0.5) * 44;
-    const off = (rng() < 0.5 ? -1 : 1) * (7 + 4 + rng() * 3);
-    const x = alongNS ? road + off : along;
-    const z = alongNS ? along : road + off;
-    mesh.position.set(x, 0, z);
-    scene.add(mesh);
-    peds.push({
-      mesh,
-      heading: rng() * Math.PI * 2,
-      speed: 1.2 + rng() * 1.2,
-      panic: 0,          // >0 while fleeing
-      turnAt: rng() * 6,
-      bobPhase: rng() * 6,
-    });
+    this.pos = new THREE.Vector3(x, 0, z);
+    this.group.position.copy(this.pos);
+    this.heading = rng() * Math.PI * 2;
+    this.speed = 1.1 + rng() * 0.9;
+    this.walkPhase = rng() * Math.PI * 2;
+    this.target = null;
+    this.fleeing = 0;
+    this.pickTarget();
+    scene.add(this.group);
   }
-  return peds;
-}
 
-// Walk pedestrians; they turn at block corners and flee from a danger point.
-export function updatePedestrians(peds, dt, dangerPos, dangerRadius, resolveFn, bounds) {
-  for (const p of peds) {
-    const pos = p.mesh.position;
-    let speed = p.speed;
-    let heading = p.heading;
-    const dx = pos.x - dangerPos.x, dz = pos.z - dangerPos.z;
-    const dDanger = Math.hypot(dx, dz);
-    if (p.panic > 0 || (dangerPos && dDanger < dangerRadius)) {
-      // flee: run away from the danger
-      p.panic = 2.5;
-      heading = Math.atan2(dx, dz);
-      speed = 5.5;
+  pickTarget() {
+    // Next sidewalk corner: snap to a road line, offset onto the sidewalk.
+    const t = (this.rng() * 2 - 1) * 220;
+    const line = [-230, -184, -138, -92, -46, 0, 46, 92, 138, 184, 230][
+      Math.floor(this.rng() * 11)];
+    if (this.rng() < 0.5) this.target = new THREE.Vector3(t, 0, line + 9.5);
+    else this.target = new THREE.Vector3(line + 9.5, 0, t);
+  }
+
+  scareAwayFrom(from, strength = 1) {
+    const away = new THREE.Vector3().copy(this.pos).sub(from);
+    away.y = 0;
+    if (away.lengthSq() < 0.01) away.set(1, 0, 0);
+    away.normalize();
+    this.target = new THREE.Vector3().copy(this.pos).addScaledVector(away, 30 * strength);
+    this.fleeing = 3;
+    this.speed = 3.4;
+  }
+
+  update(dt, frozen) {
+    if (frozen) return;
+    if (this.fleeing > 0) {
+      this.fleeing -= dt;
+      if (this.fleeing <= 0) this.speed = 1.1 + this.rng() * 0.9;
     }
-    p.panic = Math.max(0, p.panic - dt);
-    p.turnAt -= dt;
-    if (p.turnAt <= 0 && p.panic <= 0) {
-      // at a corner sometimes turn 90 degrees, occasionally reverse
-      const r = Math.random();
-      if (r < 0.4) heading += (Math.random() < 0.5 ? 1 : -1) * Math.PI / 2;
-      else if (r < 0.48) heading += Math.PI;
-      p.turnAt = 3 + Math.random() * 5;
+    const to = new THREE.Vector3().copy(this.target).sub(this.pos);
+    to.y = 0;
+    const dist = to.length();
+    if (dist < 1.2) {
+      this.pickTarget();
+      return;
     }
-    // keep to sidewalks: steer back toward the nearest block centre line if drifting onto a road
-    p.heading = heading;
-    const nx = pos.x + Math.sin(heading) * speed * dt;
-    const nz = pos.z + Math.cos(heading) * speed * dt;
-    const next = { x: nx, z: nz };
-    if (resolveFn) resolveFn(next, 0.5);
-    pos.x = THREE.MathUtils.clamp(next.x, -bounds, bounds);
-    pos.z = THREE.MathUtils.clamp(next.z, -bounds, bounds);
-    p.mesh.rotation.y = heading;
-    // walk bob
-    p.bobPhase += dt * (speed > 3 ? 12 : 7);
-    const swing = Math.sin(p.bobPhase) * (speed > 3 ? 0.8 : 0.45);
-    p.mesh.userData.legL.rotation.x = swing;
-    p.mesh.userData.legR.rotation.x = -swing;
+    to.normalize();
+    const wantHeading = Math.atan2(-to.x, -to.z);
+    let dh = wantHeading - this.heading;
+    while (dh > Math.PI) dh -= Math.PI * 2;
+    while (dh < -Math.PI) dh += Math.PI * 2;
+    this.heading += Math.max(-3 * dt, Math.min(3 * dt, dh));
+    this.pos.addScaledVector(to, this.speed * dt);
+    this.group.position.copy(this.pos);
+    this.group.rotation.y = this.heading;
+    this.walkPhase += dt * this.speed * 4;
+    this.legL.rotation.x = Math.sin(this.walkPhase) * 0.55;
+    this.legR.rotation.x = -Math.sin(this.walkPhase) * 0.55;
   }
 }
 
-// Nearest pedestrian within range (for punching / car hits).
-export function nearestPedestrian(peds, x, z, range = 2.2) {
-  let best = null, bestD = range;
-  for (const p of peds) {
-    const d = Math.hypot(p.mesh.position.x - x, p.mesh.position.z - z);
-    if (d < bestD) { best = p; bestD = d; }
+export class PedestrianSystem {
+  constructor(scene, city, rng, count = 26) {
+    this.peds = [];
+    for (let i = 0; i < count; i++) {
+      const p = city.randomRoadPoint();
+      // randomRoadPoint lands on a road lane; step sideways onto the sidewalk.
+      const horizontal = Math.abs(p.z - city.nearestRoadLine(p.z)) < 4.5;
+      const side = Math.random() < 0.5 ? 1 : -1;
+      const x = horizontal ? p.x : p.x + side * 9.5;
+      const z = horizontal ? p.z + side * 9.5 : p.z;
+      this.peds.push(new Pedestrian(scene, x, z, rng));
+    }
   }
-  return best;
+
+  update(dt, frozen) {
+    for (const p of this.peds) p.update(dt, frozen);
+  }
+
+  scareNear(pos, radius) {
+    for (const p of this.peds) {
+      if (p.pos.distanceTo(pos) < radius) p.scareAwayFrom(pos);
+    }
+  }
 }
