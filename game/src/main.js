@@ -246,6 +246,7 @@ function updateCamera(dt) {
 
 let last = performance.now(), saveTimer = 0;
 function tick(now) {
+  // Clamp dt so a stalled/hidden tab can't teleport the player or spike physics.
   const dt = Math.min(0.05, (now - last) / 1000 || 0.016);
   last = now;
   G.time += dt;
