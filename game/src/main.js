@@ -107,7 +107,7 @@ const G = {
 G.missions = createMissions(scene, onMissionEvent);
 G.combat = createCombat(scene, onCombatEvent);
 G.hud = hud;
-window.__solmar = { G, police, startGame, applyShotPreset: (n) => applyShot(G, n), saveNow };
+window.__solmar = { G, police, camera, startGame, applyShotPreset: (n) => applyShot(G, n), saveNow };
 
 // --- Mission / combat events -------------------------------------------------
 function onMissionEvent(kind, data) {
@@ -437,7 +437,13 @@ function updateCamera(dt) {
       h,
       G.playerZ - Math.cos(G.camYaw) * back,
     );
-    lookAt = new THREE.Vector3(G.playerX, 1.6, G.playerZ);
+    // Look past the player so the crosshair sits on what is ahead, not on
+    // the player: the player frames at the bottom, targets at the centre.
+    lookAt = new THREE.Vector3(
+      G.playerX + Math.sin(G.camYaw) * 8,
+      1.5,
+      G.playerZ + Math.cos(G.camYaw) * 8,
+    );
   }
   // Keep the camera out of buildings.
   const fixed = resolveBuildingCollision(city.colliders, targetPos.x, targetPos.z, 1);

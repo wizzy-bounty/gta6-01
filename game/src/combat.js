@@ -82,14 +82,20 @@ export function createCombat(scene, onEvent) {
     return hit;
   };
 
-  // Hitscan shot from the camera through the screen centre.
+  // Hitscan shot: fire from the player's chest along the camera's
+  // horizontal aim direction (screen centre), so the crosshair hits what
+  // it points at at any range instead of diving into the ground.
   state.shoot = function shoot(camera, playerPos) {
     const now = performance.now();
     if (now - state.lastShot < 220) return null;
     state.lastShot = now;
-    const ray = new THREE.Raycaster();
-    ray.setFromCamera(new THREE.Vector2(0, 0), camera);
-    ray.far = 90;
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    dir.y = 0;
+    if (dir.lengthSq() < 0.01) dir.set(0, 0, 1);
+    dir.normalize();
+    const origin = new THREE.Vector3(playerPos.x, 1.4, playerPos.z);
+    const ray = new THREE.Raycaster(origin, dir, 0.5, 70);
     const meshes = state.enemies.filter((e) => e.alive).map((e) => e.mesh);
     const hits = ray.intersectObjects(meshes, true);
     let hitEnemy = null;
@@ -107,7 +113,7 @@ export function createCombat(scene, onEvent) {
     }
     // Tracer line for feedback.
     const from = new THREE.Vector3(playerPos.x, 1.4, playerPos.z);
-    const to = hits.length > 0 ? hits[0].point : ray.ray.at(60, new THREE.Vector3());
+    const to = hits.length > 0 ? hits[0].point : origin.clone().addScaledVector(dir, 60);
     const tracerGeo = new THREE.BufferGeometry().setFromPoints([from, to]);
     const tracer = new THREE.Line(tracerGeo, new THREE.LineBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.9 }));
     scene.add(tracer);
