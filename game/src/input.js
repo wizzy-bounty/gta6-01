@@ -1,76 +1,52 @@
-// input.js — keyboard + mouse input for SOLMAR HEAT.
-// Tracks held keys, edge-triggered presses, mouse movement for the orbit
-// camera, and click events for shooting. Pointer lock is requested on the
-// game canvas when the player clicks it during play.
+// input.js — keyboard + mouse state for SOLMAR HEAT. One job: tell the game
+// which keys are down right now, and queue single-press actions (E, F, P, M).
+export function createInput() {
+  const keys = new Set();
+  const pressed = new Set(); // single-frame presses, drained by main loop
+  let mouseDown = false;
+  let mouseClicked = false; // one-shot: a click this frame
+  let mouseX = 0;
+  let mouseY = 0;
 
-export class Input {
-  constructor(canvas) {
-    this.keys = Object.create(null);
-    this.pressed = Object.create(null);
-    this.mouseDX = 0;
-    this.mouseDY = 0;
-    this.clicked = false;
-    this.locked = false;
-    this.canvas = canvas;
-    this._onKeyDown = (e) => {
-      if (e.repeat) return;
-      this.keys[e.code] = true;
-      this.pressed[e.code] = true;
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
-    };
-    this._onKeyUp = (e) => { this.keys[e.code] = false; };
-    this._onMouseMove = (e) => {
-      if (!this.locked) return;
-      this.mouseDX += e.movementX || 0;
-      this.mouseDY += e.movementY || 0;
-    };
-    this._onMouseDown = (e) => {
-      if (e.button !== 0) return;
-      // Only clicks on the game canvas itself count as shots: clicks on
-      // menu buttons (Start, Resume, ...) must not fire the player's gun.
-      if (e.target !== this.canvas) return;
-      if (!this.locked && document.pointerLockElement !== this.canvas) {
-        try { this.canvas.requestPointerLock(); } catch { /* pointer lock unavailable */ }
-      }
-      this.clicked = true;
-    };
-    this._onLockChange = () => { this.locked = document.pointerLockElement === this.canvas; };
-    window.addEventListener('keydown', this._onKeyDown);
-    window.addEventListener('keyup', this._onKeyUp);
-    window.addEventListener('mousemove', this._onMouseMove);
-    window.addEventListener('mousedown', this._onMouseDown);
-    document.addEventListener('pointerlockchange', this._onLockChange);
-  }
+  const onKeyDown = (e) => {
+    if (e.repeat) return;
+    keys.add(e.code);
+    pressed.add(e.code);
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  };
+  const onKeyUp = (e) => keys.delete(e.code);
+  const onMouseDown = (e) => { mouseDown = true; mouseClicked = true; mouseX = e.clientX; mouseY = e.clientY; };
+  const onMouseUp = () => { mouseDown = false; };
+  const onBlur = () => { keys.clear(); mouseDown = false; };
 
-  /** True while the key is held down. */
-  down(code) { return !!this.keys[code]; }
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('mousedown', onMouseDown);
+  window.addEventListener('mouseup', onMouseUp);
+  window.addEventListener('blur', onBlur);
 
-  /** True only on the frame the key was pressed. Consumed by endFrame(). */
-  wasPressed(code) { return !!this.pressed[code]; }
-
-  /** True only on the frame the mouse was clicked. Consumed by endFrame(). */
-  wasClicked() { return this.clicked; }
-
-  /** Mouse orbit deltas since the last frame; consumed by endFrame(). */
-  consumeMouse() {
-    const dx = this.mouseDX, dy = this.mouseDY;
-    this.mouseDX = 0; this.mouseDY = 0;
-    return { dx, dy };
-  }
-
-  /** Call once per frame after the game has read the input. */
-  endFrame() {
-    this.pressed = Object.create(null);
-    this.clicked = false;
-    this.mouseDX = 0;
-    this.mouseDY = 0;
-  }
-
-  dispose() {
-    window.removeEventListener('keydown', this._onKeyDown);
-    window.removeEventListener('keyup', this._onKeyUp);
-    window.removeEventListener('mousemove', this._onMouseMove);
-    window.removeEventListener('mousedown', this._onMouseDown);
-    document.removeEventListener('pointerlockchange', this._onLockChange);
-  }
+  return {
+    // Held keys (WASD + arrows + Shift + Space).
+    get forward() { return keys.has('KeyW') || keys.has('ArrowUp'); },
+    get back() { return keys.has('KeyS') || keys.has('ArrowDown'); },
+    get left() { return keys.has('KeyA') || keys.has('ArrowLeft'); },
+    get right() { return keys.has('KeyD') || keys.has('ArrowRight'); },
+    get run() { return keys.has('ShiftLeft') || keys.has('ShiftRight'); },
+    get jump() { return keys.has('Space'); },
+    get mouseDown() { return mouseDown; },
+    get mouseClicked() { return mouseClicked; },
+    get mouseX() { return mouseX; },
+    get mouseY() { return mouseY; },
+    // One-shot press consumed by whoever reads it first.
+    wasPressed(code) { if (pressed.has(code)) { pressed.delete(code); return true; } return false; },
+    // End of frame: forget one-shot presses and clicks.
+    endFrame() { pressed.clear(); mouseClicked = false; },
+    dispose() {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('blur', onBlur);
+    },
+  };
 }

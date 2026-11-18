@@ -1,59 +1,51 @@
 // save.js — localStorage save / load for SOLMAR HEAT.
-// Stores mission progress, cash, health, player position and the time of
-// day under one key. Loading a save never throws: corrupt data falls back
-// to a fresh game.
+// Stores mission progress, money, player position and wanted level.
+// Nothing here touches the network; the key is namespaced to this game.
+const KEY = 'solmar-heat-save-v1';
 
-const SAVE_KEY = 'solmar-heat-save-v1';
-
-export function defaultSave() {
-  return {
-    mission: 0,
-    money: 250,
-    health: 100,
-    player: { x: -150, z: -180 },
-    timeOfDay: 10,
-    completedMissions: [],
-  };
-}
-
-export function loadSave() {
-  try {
-    const raw = window.localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (typeof data !== 'object' || data === null) return null;
-    const fresh = defaultSave();
-    return {
-      mission: Number.isInteger(data.mission) ? data.mission : fresh.mission,
-      money: typeof data.money === 'number' ? data.money : fresh.money,
-      health: typeof data.health === 'number' ? data.health : fresh.health,
-      player: data.player && typeof data.player.x === 'number' && typeof data.player.z === 'number'
-        ? { x: data.player.x, z: data.player.z } : fresh.player,
-      timeOfDay: typeof data.timeOfDay === 'number' ? data.timeOfDay : fresh.timeOfDay,
-      completedMissions: Array.isArray(data.completedMissions) ? data.completedMissions : [],
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function writeSave(state) {
+export function saveGame(state) {
   try {
     const data = {
-      mission: state.missionIndex,
-      money: Math.round(state.money),
-      health: Math.round(state.health),
-      player: { x: Math.round(state.playerPos.x * 10) / 10, z: Math.round(state.playerPos.z * 10) / 10 },
+      version: 1,
+      savedAt: Date.now(),
+      missionIndex: state.missionIndex,
+      money: state.money,
+      health: state.health,
+      wanted: state.wanted,
+      player: { x: state.player.pos.x, z: state.player.pos.z, heading: state.player.heading },
+      completed: state.missionsCompleted.slice(),
+      day: state.day,
       timeOfDay: state.timeOfDay,
-      completedMissions: state.completedMissions,
     };
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    localStorage.setItem(KEY, JSON.stringify(data));
     return true;
-  } catch {
+  } catch (err) {
     return false;
   }
 }
 
+export function loadGame() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || data.version !== 1) return null;
+    return data;
+  } catch (err) {
+    return null;
+  }
+}
+
+export function hasSave() {
+  return loadGame() !== null;
+}
+
+export function saveSummary() {
+  const d = loadGame();
+  if (!d) return null;
+  return `Mission ${Math.min(d.missionIndex + 1, 6)}/6 · $${d.money.toLocaleString('en-US')} · Day ${d.day}`;
+}
+
 export function clearSave() {
-  try { window.localStorage.removeItem(SAVE_KEY); } catch { /* storage unavailable */ }
+  try { localStorage.removeItem(KEY); } catch (err) { /* ignore */ }
 }

@@ -1,190 +1,192 @@
-// missions.js — "The Solmar Job": six story missions for SOLMAR HEAT.
-// Each mission has a title, dialogue from Mara Voss, an objective, a
-// gold marker in the world, and a payout. The system tracks the active
-// mission, spawns its enemies, watches for completion (reach a place,
-// steal a car, eliminate guards, escape a wanted level) and pays out.
-
+// missions.js — "The Solmar Job": six story missions from Mara Voss,
+// ending in the Solmar Star yacht-casino heist. Each mission is a small
+// state machine: go to a marker, do the thing, get paid, next mission.
 import * as THREE from 'three';
 
 export const MISSIONS = [
   {
-    id: 1, title: 'FRESH OUT',
+    id: 'm1', title: 'MISSION 1 — FIRST WHEELS', reward: 400,
     giver: 'MARA VOSS',
-    dialog: "Vex. You're out. The city forgot you — good. Meet me at the Marina Tower and we'll talk about the Solmar Star.",
-    objective: 'Meet Mara Voss at the Marina Tower.',
-    sub: 'Follow the gold marker on your minimap.',
-    target: { x: -150, z: -198 }, type: 'reach', reward: 200,
+    briefing: "Fresh out and already broke, Vex. Steal any car on the street and bring it to my garage. No plates, no questions.",
+    objective: 'Steal a car and reach Mara\'s garage',
+    hint: 'Press E near a car to steal it. Then follow the gold marker.',
+    type: 'steal-and-drive',
+    target: { x: 0, z: 14 },
   },
   {
-    id: 2, title: 'HOT WHEELS',
+    id: 'm2', title: 'MISSION 2 — THE PACKAGE', reward: 650,
     giver: 'MARA VOSS',
-    dialog: "First rule of the job: never drive your own car. Steal one — any one — and bring it to the Old Town garage. Quick and quiet.",
-    objective: 'Steal a car and drive it to the Old Town garage.',
-    sub: 'Press E near a car to steal it. Watch the wanted stars.',
-    target: { x: 150, z: -150 }, type: 'steal-drive', reward: 400,
+    briefing: "A friend left a package at the Old Town market. Pick it up and bring it back to the garage. Don't open it. Seriously.",
+    objective: 'Pick up the package in Old Town',
+    hint: 'Drive to the gold marker, then walk to the crate.',
+    type: 'goto',
+    target: { x: -140, z: -140 },
   },
   {
-    id: 3, title: 'NEON RUN',
+    id: 'm3', title: 'MISSION 3 — HOT PURSUIT', reward: 900,
     giver: 'MARA VOSS',
-    dialog: "A package is waiting on the Neon Strip. Pick it up. The Strip's boys won't like you taking it — be ready.",
-    objective: 'Pick up the package on the Neon Strip.',
-    sub: 'Then deal with whoever shows up.',
-    target: { x: -120, z: 60 }, type: 'pickup', reward: 500,
-    enemies: [{ x: -112, z: 68 }, { x: -128, z: 52 }],
+    briefing: "The package was hotter than I thought. Solmar PD is on you — lose them before you come home. No cops on your tail, Vex.",
+    objective: 'Lose the police (get wanted to 0)',
+    hint: 'Drive fast, break line of sight, stay quiet for a while.',
+    type: 'lose-cops',
+    target: { x: 0, z: 14 },
   },
   {
-    id: 4, title: 'DOCKSIDE DEAL',
+    id: 'm4', title: 'MISSION 4 — DOCKS SHOWDOWN', reward: 1400,
     giver: 'MARA VOSS',
-    dialog: "The Docks crew is holding the blueprints for the Star's vault. Take them down, grab the case, and don't get shot.",
-    objective: 'Eliminate the Docks guards and take the case.',
-    sub: 'F to punch, click to shoot.',
-    target: { x: 150, z: 150 }, type: 'eliminate', reward: 800,
-    enemies: [{ x: 142, z: 142 }, { x: 158, z: 158 }, { x: 150, z: 166 }],
+    briefing: "The Docks crew wants their cut. They brought guns. So did we — clear them out, then grab the cash crate.",
+    objective: 'Clear out the Docks crew (4 gunmen)',
+    hint: 'Click to shoot, F to punch. Use the crates as cover.',
+    type: 'shootout',
+    target: { x: -160, z: 160 },
   },
   {
-    id: 5, title: 'HEAT RISING',
+    id: 'm5', title: 'MISSION 5 — THE GETAWAY', reward: 1800,
     giver: 'MARA VOSS',
-    dialog: "The law is on us, Vex — three stars and climbing. Lose them. Get to the safehouse in Old Town and stay out of sight.",
-    objective: 'Escape the police and reach the safehouse.',
-    sub: 'Lose your wanted level, then reach the marker.',
-    target: { x: 90, z: -210 }, type: 'escape', reward: 1000,
-    forceWanted: 3,
+    briefing: "The buyer is waiting at the Neon Strip. The catch: PD knows the route. Get there in one piece — under 90 seconds and the bonus is yours.",
+    objective: 'Reach the Neon Strip buyer in 90s',
+    hint: 'Follow the gold marker. Straight line, full throttle.',
+    type: 'timed-drive',
+    target: { x: 140, z: 140 },
+    timeLimit: 90,
   },
   {
-    id: 6, title: 'THE SOLMAR JOB',
+    id: 'm6', title: 'MISSION 6 — THE SOLMAR STAR', reward: 5000,
     giver: 'MARA VOSS',
-    dialog: "This is it. The Solmar Star, the casino yacht. Guards on the pier — clear them, get aboard, and the vault is ours. One last job, Vex.",
-    objective: 'Clear the pier guards and board the Solmar Star.',
-    sub: 'Then reach the escape boat at the end of the pier.',
-    target: { x: -60, z: -252 }, type: 'heist', reward: 2500,
-    enemies: [{ x: -72, z: -238 }, { x: -48, z: -238 }, { x: -66, z: -246 }, { x: -54, z: -246 }],
+    briefing: "This is it. The Solmar Star yacht casino, tonight, while the high rollers are aboard. Board the yacht, grab the vault cash, and vanish. Whatever happens — it was a pleasure, Vex.",
+    objective: 'Board the yacht and grab the vault cash',
+    hint: 'Take the pier. The crew will not let you walk in.',
+    type: 'heist',
+    target: { x: 232, z: -52 },
   },
 ];
 
-export class MissionSystem {
-  constructor(scene, combat) {
-    this.scene = scene;
-    this.combat = combat;
-    this.index = 0;
-    this.phase = 'go'; // go | fight | escape | done
-    this.marker = this._buildMarker();
-    this.scene.add(this.marker);
-    this.onEvent = null; // (type, data) — main.js wires dialog/toast/sound
-    this._pickupDone = false;
-  }
+export function createMissions(scene, city, hooks) {
+  // hooks: { onDialog(who, line), onToast(text), onComplete(mission), onWin(), onSpawnEnemies(x, z, n), onWanted(n) }
+  let index = 0;
+  let phase = 'idle'; // idle | active | done
+  let timer = 0;
+  let enemiesSpawned = false;
+  let marker = null;
+  let markerRing = null;
+  let beacon = null;
+  let completed = [];
 
-  _buildMarker() {
-    const group = new THREE.Group();
+  function makeMarker() {
+    const g = new THREE.Group();
+    const ringGeo = new THREE.TorusGeometry(3.2, 0.35, 10, 28);
+    const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffcf3d }));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.4;
+    g.add(ring);
     const beam = new THREE.Mesh(
-      new THREE.CylinderGeometry(2.2, 2.2, 60, 12, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }),
+      new THREE.CylinderGeometry(1.6, 1.6, 60, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffcf3d, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }),
     );
     beam.position.y = 30;
-    group.add(beam);
-    const diamond = new THREE.Mesh(
-      new THREE.OctahedronGeometry(2.4),
-      new THREE.MeshBasicMaterial({ color: 0xffd23e }),
-    );
-    diamond.position.y = 12;
-    diamond.name = 'diamond';
-    group.add(diamond);
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(4.5, 0.35, 8, 32),
-      new THREE.MeshBasicMaterial({ color: 0xffd23e }),
-    );
-    ring.rotation.x = Math.PI / 2;
-    ring.position.y = 0.3;
-    group.add(ring);
-    return group;
+    g.add(beam);
+    scene.add(g);
+    return { group: g, ring };
   }
 
-  get current() { return MISSIONS[this.index] || null; }
-  get finished() { return this.index >= MISSIONS.length; }
+  function placeMarker(x, z) {
+    removeMarker();
+    const m = makeMarker();
+    m.group.position.set(x, 0, z);
+    marker = m.group;
+    markerRing = m.ring;
+    beacon = m;
+  }
+  function removeMarker() {
+    if (marker) { scene.remove(marker); marker = null; markerRing = null; beacon = null; }
+  }
 
-  /** Start (or restart) the mission at `index`. */
-  start(index, state) {
-    this.index = index;
-    this.phase = 'go';
-    this._pickupDone = false;
-    const m = this.current;
+  function current() { return MISSIONS[index] || null; }
+
+  function start(idx) {
+    index = idx;
+    const m = current();
+    if (!m) { phase = 'done'; return null; }
+    phase = 'active';
+    timer = m.timeLimit || 0;
+    enemiesSpawned = false;
+    hooks.onDialog(m.giver, m.briefing);
+    if (hooks.onMissionStart) hooks.onMissionStart(m);
+    placeMarker(m.target.x, m.target.z);
+    if (m.type === 'lose-cops') hooks.onWanted(2);
+    if ((m.type === 'shootout' || m.type === 'heist') && !enemiesSpawned) {
+      enemiesSpawned = true;
+      const n = m.type === 'shootout' ? 4 : 3;
+      hooks.onSpawnEnemies(m.target.x, m.target.z, n);
+    }
+    return m;
+  }
+
+  function complete() {
+    const m = current();
     if (!m) return;
-    this.combat.clearEnemies();
-    if (m.forceWanted && state.wanted < m.forceWanted) state.wanted = m.forceWanted;
-    if (this.onEvent) this.onEvent('dialog', { who: m.giver, line: m.dialog });
-    if (this.onEvent) this.onEvent('objective', m);
-    this._placeMarker();
+    completed.push(m.id);
+    hooks.onToast(`MISSION COMPLETE — +$${m.reward.toLocaleString('en-US')}`);
+    hooks.onComplete(m);
+    removeMarker();
+    if (index + 1 >= MISSIONS.length) {
+      phase = 'done';
+      hooks.onWin();
+    } else {
+      start(index + 1);
+    }
   }
 
-  _placeMarker() {
-    const m = this.current;
-    if (!m) { this.marker.visible = false; return; }
-    this.marker.visible = true;
-    this.marker.position.set(m.target.x, 0, m.target.z);
+  // Called every frame while a mission is active. Returns nothing; uses hooks.
+  function update(dt, ctx) {
+    // ctx: { playerPos, inCar, wanted, enemiesAlive, stoleCar, atTarget }
+    if (phase !== 'active') return;
+    const m = current();
+    if (!m) return;
+    if (markerRing) markerRing.rotation.z += dt * 1.5;
+    if (m.timeLimit) {
+      timer -= dt;
+      if (timer <= 0) {
+        hooks.onToast('TOO SLOW — mission failed, try again');
+        hooks.onDialog('MARA VOSS', 'Too slow, Vex. The buyer walked. Get back to the garage and we run it again.');
+        start(index); // restart same mission
+        return;
+      }
+    }
+    const d = Math.hypot(ctx.playerPos.x - m.target.x, ctx.playerPos.z - m.target.z);
+    switch (m.type) {
+      case 'steal-and-drive':
+        if (ctx.stoleCar && d < 12) complete();
+        break;
+      case 'goto':
+        if (d < 6) complete();
+        break;
+      case 'lose-cops':
+        if (ctx.wanted === 0) complete();
+        break;
+      case 'shootout':
+        if (ctx.enemiesAlive === 0 && d < 14) complete();
+        break;
+      case 'timed-drive':
+        if (d < 10) complete();
+        break;
+      case 'heist':
+        if (ctx.enemiesAlive === 0 && d < 8) complete();
+        break;
+      default:
+        break;
+    }
   }
 
-  /** Called every frame; returns 'complete' when the mission finishes. */
-  update(dt, state, playerPos, inCar, stoleCar) {
-    const m = this.current;
-    if (!m) return null;
-    const diamond = this.marker.getObjectByName('diamond');
-    if (diamond) {
-      diamond.rotation.y += dt * 2;
-      diamond.position.y = 12 + Math.sin(performance.now() * 0.002) * 1.2;
-    }
-    const dist = Math.hypot(playerPos.x - m.target.x, playerPos.z - m.target.z);
-    if (this.phase === 'go') {
-      if (m.type === 'reach' && dist < 8) return this._complete(state);
-      if (m.type === 'steal-drive' && stoleCar && dist < 10) return this._complete(state);
-      if (m.type === 'pickup' && dist < 6) {
-        this.phase = 'fight';
-        this._pickupDone = true;
-        for (const e of m.enemies || []) this.combat.spawnEnemy(e.x, e.z);
-        if (this.onEvent) this.onEvent('dialog', { who: 'MARA VOSS', line: "Package secured. Company incoming — handle them, Vex." });
-        if (this.onEvent) this.onEvent('objective', { ...m, objective: 'Eliminate the Strip thugs.', sub: 'F to punch, click to shoot.' });
-      }
-      if (m.type === 'eliminate' && dist < 30 && this.combat.aliveCount === 0 && !this._spawned) {
-        this._spawned = true;
-        for (const e of m.enemies || []) this.combat.spawnEnemy(e.x, e.z);
-        if (this.onEvent) this.onEvent('dialog', { who: 'MARA VOSS', line: "There they are. Make it quick." });
-      }
-      if (m.type === 'escape') {
-        if (state.wanted === 0 && dist < 10) return this._complete(state);
-        if (state.wanted === 0 && dist >= 10) {
-          if (this.onEvent) this.onEvent('hint', 'Clean! Now get to the safehouse marker.');
-        }
-      }
-      if (m.type === 'heist' && dist < 34 && this.combat.aliveCount === 0 && !this._spawned) {
-        this._spawned = true;
-        for (const e of m.enemies || []) this.combat.spawnEnemy(e.x, e.z);
-        if (this.onEvent) this.onEvent('dialog', { who: 'MARA VOSS', line: "Guards on the pier. Clear them and the Star is ours." });
-      }
-    } else if (this.phase === 'fight') {
-      if (this.combat.aliveCount === 0) return this._complete(state);
-    }
-    // Eliminate-type missions complete when all spawned guards are down.
-    if ((m.type === 'eliminate' || m.type === 'heist') && this._spawned && this.combat.aliveCount === 0) {
-      if (m.type === 'eliminate') return this._complete(state);
-      if (m.type === 'heist' && dist < 8) return this._complete(state);
-      if (m.type === 'heist') {
-        if (this.onEvent) this.onEvent('objective', { ...m, objective: 'Board the Solmar Star — reach the yacht.', sub: 'The pier is clear. Go!' });
-      }
-    }
-    return null;
-  }
+  function timeLeft() { return timer; }
 
-  _complete(state) {
-    const m = this.current;
-    state.money += m.reward;
-    state.completedMissions.push(m.id);
-    this._spawned = false;
-    if (this.onEvent) this.onEvent('complete', m);
-    this.index += 1;
-    if (this.finished) {
-      this.marker.visible = false;
-      if (this.onEvent) this.onEvent('allDone', null);
-      return 'complete';
-    }
-    this.start(this.index, state);
-    return 'complete';
-  }
+  return {
+    start, update, complete, current, timeLeft,
+    get index() { return index; },
+    get phase() { return phase; },
+    get completed() { return completed.slice(); },
+    setCompleted(list) { completed = list.slice(); },
+    setIndex(i) { index = i; },
+    placeMarker, removeMarker,
+  };
 }

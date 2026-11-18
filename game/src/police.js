@@ -1,129 +1,169 @@
-// police.js — police chase AI for SOLMAR HEAT.
-// The number of active patrol cars follows the wanted level. Police cars
-// steer toward the player, ram the player's car, and try to box the
-// player in on foot (a "busted" arrest when they pin a slow player).
-// At 5 stars a helicopter circles overhead. Light bars flash red/blue.
-
+// police.js — wanted level 1–5 and the Solmar PD response: patrol cars
+// that chase and ram, a heat meter that cools when you lay low, and a
+// police helicopter with a searchlight at five stars.
 import * as THREE from 'three';
-import { makeCar } from './vehicles.js';
-import { resolveCollisions } from './city.js';
+import { makeCar, createCarState } from './vehicles.js';
 
-export class PoliceSystem {
-  constructor(scene) {
-    this.scene = scene;
-    this.cars = [];
-    this.heli = null;
-    this.heliAngle = 0;
-    this.bustedTimer = 0;
-    this._flash = 0;
+export function createPolice(scene, city) {
+  const cars = [];
+  let spawnTimer = 0;
+  let heli = null;
+  let heliLight = null;
+  let heliAngle = 0;
+
+  function spawnCar(target) {
+    const car = makeCar(1, { color: 0x14181f, police: true });
+    scene.add(car.group);
+    // Spawn on a road a little ahead of the player.
+    const a = Math.random() * Math.PI * 2;
+    const x = THREE.MathUtils.clamp(target.x + Math.sin(a) * 55, -190, 190);
+    const z = THREE.MathUtils.clamp(target.z + Math.cos(a) * 55, -190, 190);
+    const st = createCarState(car, x, z, Math.atan2(target.x - x, -(target.z - z)));
+    st.speed = 10;
+    st.police = true;
+    car.group.position.set(x, 0, z);
+    car.group.rotation.y = st.heading;
+    cars.push(st);
+    return st;
   }
 
-  /** Target patrol count for a wanted level (0 at 0 stars). */
-  targetCount(wanted) {
-    return wanted === 0 ? 0 : Math.min(1 + wanted, 5);
-  }
-
-  _spawnHeli() {
-    const group = new THREE.Group();
+  function ensureHeli() {
+    if (heli) return;
+    const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.4, 6.5),
-      new THREE.MeshLambertMaterial({ color: 0x1a2a4a }));
-    group.add(body);
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1, 2.4),
-      new THREE.MeshLambertMaterial({ color: 0x9fd4e8 }));
-    cabin.position.set(0, 0.4, 1.8);
-    group.add(cabin);
-    const rotor = new THREE.Mesh(new THREE.BoxGeometry(9, 0.12, 0.5),
-      new THREE.MeshLambertMaterial({ color: 0x22242a }));
+      new THREE.MeshLambertMaterial({ color: 0x1c2733 }));
+    g.add(body);
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.1, 2.6),
+      new THREE.MeshLambertMaterial({ color: 0x9fd8ff }));
+    cabin.position.set(0, 0.4, 2);
+    g.add(cabin);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 5),
+      new THREE.MeshLambertMaterial({ color: 0x1c2733 }));
+    tail.position.set(0, 0.3, -5);
+    g.add(tail);
+    const rotor = new THREE.Mesh(new THREE.BoxGeometry(11, 0.12, 0.8),
+      new THREE.MeshLambertMaterial({ color: 0x333a44 }));
     rotor.position.y = 1.1;
-    rotor.name = 'rotor';
-    group.add(rotor);
-    const spot = new THREE.Mesh(new THREE.ConeGeometry(3, 18, 12, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.16, side: THREE.DoubleSide }));
-    spot.position.y = -10;
-    spot.rotation.x = Math.PI;
-    group.add(spot);
-    group.position.set(0, 55, 0);
-    this.scene.add(group);
-    this.heli = group;
+    g.add(rotor);
+    g.userData.rotor = rotor;
+    heliLight = new THREE.SpotLight(0xfff2b0, 600, 90, 0.35, 0.5, 1.2);
+    heliLight.position.set(0, -0.5, 0);
+    g.add(heliLight);
+    g.add(heliLight.target);
+    heliLight.target.position.set(0, -40, 0);
+    scene.add(g);
+    heli = g;
   }
 
-  update(dt, wanted, playerPos, playerSpeed, inCar, onCrimeSpree) {
-    const want = this.targetCount(wanted);
-    // Spawn / despawn patrol cars to match the wanted level.
-    while (this.cars.length < want) {
-      const angle = Math.random() * Math.PI * 2;
-      const car = makeCar(
-        this.scene, 0x1a2a4a,
-        playerPos.x + Math.cos(angle) * 45, playerPos.z + Math.sin(angle) * 45,
-        Math.atan2(playerPos.x - (playerPos.x + Math.cos(angle) * 45), playerPos.z - (playerPos.z + Math.sin(angle) * 45)),
-        { police: true },
-      );
-      car.speed = 12;
-      this.cars.push(car);
-    }
-    while (this.cars.length > want) {
-      const car = this.cars.pop();
-      this.scene.remove(car.mesh);
-    }
-    // Helicopter only at 5 stars.
-    if (wanted >= 5 && !this.heli) this._spawnHeli();
-    if (wanted < 5 && this.heli) { this.scene.remove(this.heli); this.heli = null; }
-    if (this.heli) {
-      this.heliAngle += dt * 0.25;
-      this.heli.position.set(
-        playerPos.x + Math.cos(this.heliAngle) * 26,
-        52 + Math.sin(this.heliAngle * 2) * 3,
-        playerPos.z + Math.sin(this.heliAngle) * 26,
-      );
-      this.heli.rotation.y = Math.atan2(playerPos.x - this.heli.position.x, playerPos.z - this.heli.position.z);
-      const rotor = this.heli.getObjectByName('rotor');
-      if (rotor) rotor.rotation.y += dt * 22;
-    }
+  function removeHeli() {
+    if (!heli) return;
+    scene.remove(heli);
+    heli = null; heliLight = null;
+  }
 
-    this._flash += dt;
-    const flashOn = Math.floor(this._flash * 6) % 2 === 0;
-    let nearest = Infinity;
-    for (const car of this.cars) {
-      const dx = playerPos.x - car.x, dz = playerPos.z - car.z;
+  // wanted: 0..5. dt seconds. target: {x, z, speed}. Returns events.
+  function update(dt, wanted, target, playerInCar) {
+    const events = [];
+    const wantCount = wanted === 0 ? 0 : 1 + Math.floor(wanted / 2);
+    spawnTimer -= dt;
+    if (wanted > 0 && cars.length < wantCount && spawnTimer <= 0) {
+      spawnCar(target);
+      spawnTimer = 4;
+    }
+    // Despawn extra cars when heat falls.
+    while (cars.length > wantCount) {
+      const c = cars.pop();
+      scene.remove(c.car.group);
+    }
+    for (const c of cars) {
+      if (c.staged) {
+        // Staged for a screenshot: hold position, but keep the mesh in sync.
+        c.car.group.position.set(c.x, 0, c.z);
+        c.car.group.rotation.y = c.heading;
+        continue;
+      }
+      const dx = target.x - c.x;
+      const dz = target.z - c.z;
       const dist = Math.hypot(dx, dz);
-      nearest = Math.min(nearest, dist);
-      const wantHeading = Math.atan2(dx, dz);
-      let dh = wantHeading - car.heading;
+      const wantHeading = Math.atan2(dx, -dz);
+      let dh = wantHeading - c.heading;
       while (dh > Math.PI) dh -= Math.PI * 2;
       while (dh < -Math.PI) dh += Math.PI * 2;
-      car.heading += Math.max(-2.4 * dt, Math.min(2.4 * dt, dh));
-      const targetSpeed = dist > 4 ? Math.min(30, 12 + playerSpeed * 1.05 + wanted * 1.5) : 4;
-      car.speed += (targetSpeed - car.speed) * Math.min(1, 2 * dt);
-      car.x += Math.sin(car.heading) * car.speed * dt;
-      car.z += Math.cos(car.heading) * car.speed * dt;
-      resolveCollisions(car, 1.8, []);
-      car.mesh.position.set(car.x, 0, car.z);
-      car.mesh.rotation.y = car.heading;
-      car.wheelSpin += car.speed * dt * 2;
-      for (const w of car.mesh.userData.wheels) w.rotation.x = car.wheelSpin;
-      const bar = car.mesh.userData.lightBar;
-      if (bar) {
-        bar.userData.red.material.color.setHex(flashOn ? 0xff2222 : 0x550000);
-        bar.userData.blue.material.color.setHex(flashOn ? 0x111166 : 0x2244ff);
+      const top = 22 + wanted * 3.5;
+      const desired = dist > 26 ? top : Math.min(top, 14 + dist * 0.4);
+      c.speed += (desired - c.speed) * Math.min(1, dt * 1.2);
+      c.heading += THREE.MathUtils.clamp(dh, -2.4 * dt, 2.4 * dt);
+      const nx = c.x + Math.sin(c.heading) * c.speed * dt;
+      const nz = c.z - Math.cos(c.heading) * c.speed * dt;
+      if (!city.collide(nx, nz, 1.6)) { c.x = nx; c.z = nz; }
+      else { c.speed *= 0.5; c.heading += 0.7 * dt; }
+      c.car.group.position.set(c.x, 0, c.z);
+      c.car.group.rotation.y = c.heading;
+      const spin = c.speed * dt * 2.4;
+      for (const w of c.car.wheels) w.rotation.x += spin;
+      // Ram: close contact damages the player / their car.
+      if (dist < 3.4 && c.ramCd <= 0) {
+        c.ramCd = 1.2;
+        events.push({ type: 'ram', strength: Math.min(18, 6 + c.speed * 0.5) });
       }
-      // Ram: shove the player's car when close.
-      if (dist < 4.5 && inCar && onCrimeSpree) {
-        onCrimeSpree.rammed = true;
-      }
+      c.ramCd = (c.ramCd || 0) - dt;
     }
-    // Busted: on foot, slow, and a patrol car right on top of the player.
-    if (!inCar && wanted > 0 && nearest < 3.2 && playerSpeed < 1.5) {
-      this.bustedTimer += dt;
+    // Helicopter at five stars.
+    if (wanted >= 5) {
+      ensureHeli();
+      heliAngle += dt * 0.55;
+      const hx = target.x + Math.sin(heliAngle) * 26;
+      const hz = target.z + Math.cos(heliAngle) * 26;
+      heli.position.set(hx, 42 + Math.sin(heliAngle * 2) * 3, hz);
+      heli.rotation.y = Math.atan2(target.x - hx, -(target.z - hz));
+      heli.userData.rotor.rotation.y += dt * 22;
+      heliLight.target.position.set(target.x - hx, -42, target.z - hz);
     } else {
-      this.bustedTimer = 0;
+      removeHeli();
     }
-    return { nearestPolice: nearest, busted: this.bustedTimer > 2.2 };
+    return events;
   }
 
-  clear() {
-    for (const car of this.cars) this.scene.remove(car.mesh);
-    this.cars = [];
-    if (this.heli) { this.scene.remove(this.heli); this.heli = null; }
-    this.bustedTimer = 0;
+  function clearAll() {
+    for (const c of cars) scene.remove(c.car.group);
+    cars.length = 0;
+    removeHeli();
   }
+
+  return { cars, update, clearAll, spawnCar };
+}
+
+// Heat bookkeeping: how wanted rises and falls.
+export function createHeat() {
+  let level = 0;
+  let heat = 0; // 0..100 within the current level
+  let quietTimer = 0; // seconds without a crime
+  function add(amount, cause) {
+    heat += amount;
+    quietTimer = 0;
+    const nl = Math.min(5, Math.floor(heat / 20) + (heat > 0 ? 1 : 0));
+    const changed = nl !== level;
+    level = nl;
+    return { level, changed, cause };
+  }
+  function update(dt, committingCrime) {
+    if (!committingCrime) {
+      quietTimer += dt;
+      if (quietTimer > 14 && level > 0) {
+        heat -= dt * 3.5;
+        if (heat <= 0) { heat = 0; level = 0; }
+        else level = Math.min(5, Math.floor(heat / 20) + 1);
+      }
+    } else {
+      quietTimer = 0;
+    }
+    return level;
+  }
+  return {
+    get level() { return level; },
+    get heat() { return heat; },
+    add,
+    update,
+    set(v) { level = v; heat = v === 0 ? 0 : (v - 1) * 20 + 10; },
+  };
 }
