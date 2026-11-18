@@ -1,55 +1,65 @@
-# SOLMAR HEAT
+# SOLMAR HEAT — Open-World Crime in Solmar City
 
-An original open-world crime game that runs entirely in the browser.
-You are Riko "Vex" Marlowe, fresh out and already in debt to the wrong
-people. Fixer Mara Voss has work: a chain of eight jobs — "The Solmar
-Job" — that climbs from a stolen coupe in the Marina to the vault of the
-Solmar Star, the casino yacht anchored off the pier.
+[![make.fun](https://img.shields.io/badge/make.fun-gta6--01-ff2e88)](https://make.fun/c/gta6-01)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![three.js](https://img.shields.io/badge/three.js-r160-blue)](https://threejs.org)
+
+An original open-world crime game that runs offline in a desktop browser from
+static files — no build step, no network. You are **Riko “Vex” Marlowe**, a
+getaway driver fresh out of prison, pulled back into Solmar City by **Mara
+Voss** for one last job: **“The Solmar Job”** — eight chained story missions
+across five districts, ending in a heist on the **Solmar Star** casino yacht.
 
 ## The city
 
-Solmar City is a five-district island grid, fully explorable on foot or
-by car:
+Solmar City is a sun-soaked coastal city with five readable districts:
 
-- **Marina** — blue-and-white waterfront towers and the yacht pier
-- **Old Town** — brick-yellow blocks around the hospital
-- **Neon Strip** — purple-pink signs, Club Vex, cabs after dark
-- **The Docks** — rust-grey container yards and cranes
-- **Airport & Beach** — runway, terminal, and the south shore road
-
-Every district has live traffic that queues at the lights, pedestrians
-who dodge out of the way, and parked cars that can be stolen.
+- **Marina** (blue-white) — tower, yacht basin, your safehouse
+- **Old Town** (yellow brick) — tight streets, the first hideout
+- **Neon Strip** (purple-pink) — nightlife, neon trim, best cars to steal
+- **Docks** (rust grey) — containers, cranes, the vault-code job
+- **Solmar Airport** (north) — runway, terminal, control tower
 
 ## Systems
 
-- On-foot and driving gameplay with a full wanted system: police
-  interceptors hunt your last seen position, and at four stars a police
-  helicopter joins with a live spotlight you have to break out of
-- Eight chained story missions with briefings, HUD objectives, timers,
-  armed guards, an armored-van ambush, casino surveillance, and the
-  yacht finale
-- A safehouse with save / continue (browser local storage)
-- Two switchable in-car radio stations plus synthesized engine, siren,
-  and impact audio
-- Day-night cycle, chase camera, minimap with live unit markers,
-  start screen and pause menu
+- **On foot & by car** — third-person walking, smooth chase camera, steal any parked car with `E`
+- **Wanted 1–5** — police cars chase and ram; at wanted 4–5 a **police helicopter** circles with a searchlight
+- **Live city** — AI traffic that stops at red lights, pedestrians who stroll and flee
+- **8 story missions** — briefing dialog from Mara Voss, HUD objectives, hold-the-zone, shootouts, and a vault-crack finale with a getaway escape
+- **Combat** — punch (`F`) and shoot (mouse click) against armed guards
+- **HUD + minimap** — money, health, wanted stars, district, clock, mission marker, traffic and police dots
+- **Radio** — two synth stations (`R` to switch): SOLMAR FM 101.2 and HEAT 98.5
+- **Save** — the safehouse auto-saves and clears your wanted level; continue from the start screen
+- **Polish** — day/night cycle, synth engine/siren/crash/gunshot audio, crash camera shake, start screen and pause menu
 
 ## Controls
 
-- **WASD / arrows** — walk or drive · **Shift** — sprint
-- **E** — interact: steal / enter / exit cars, start missions, save
-- **F** — punch · **Mouse (click to lock)** — aim, click to shoot
-- **R** — change radio station · **Esc / P** — pause
+| Key | Action |
+| --- | --- |
+| WASD / arrows | Walk / drive |
+| Mouse drag | Camera |
+| E | Steal / enter car, exit car |
+| F | Punch |
+| Mouse click | Shoot |
+| R | Switch radio station |
+| Shift | Sprint |
+| P / Esc | Pause |
 
-## Running it
+## Play it
 
-The submission program is dependency-free Node:
-
+```bash
+node serve.ts
+# open http://localhost:8080
 ```
-node main.ts          # writes the game + screenshots + dossier to /output
-node serve.ts         # or serve the game locally for play
-```
 
-The game itself is static: `game/index.html` plus the modules in
-`game/src/`, rendered with the vendored Three.js build in
-`game/vendor/`. No build step, no network calls.
+Or serve `game/` with any static file server and open `game/index.html`.
+
+## Screenshots
+
+`shots.json` lists the four deterministic screenshot scenes (`?shot=1..4`):
+chase cover, night car theft, yacht mission, Marina walk.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Built with vendored three.js r160
+(`game/vendor/three.min.js`).

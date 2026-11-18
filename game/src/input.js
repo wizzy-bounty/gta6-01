@@ -1,76 +1,64 @@
-// input.js — keyboard and mouse state for SOLMAR HEAT.
-// One shared state object: `keys` holds what is down right now, `pressed` holds
-// what went down this frame (for one-shot actions like entering a car), and the
-// mouse deltas accumulate between frames for the orbit camera.
+// input.js — keyboard + mouse state for SOLMAR HEAT. One job: raw input only.
+export function createInput() {
+  const keys = new Set();
+  const state = {
+    keys,
+    mouseDown: false,
+    mouseClicked: false,
+    dragDX: 0,
+    dragDY: 0,
+    dragging: false,
+    pointerLocked: false,
+  };
+  let lastX = 0;
+  let lastY = 0;
 
-export const input = {
-  keys: new Set(),
-  pressed: new Set(),
-  mouseDX: 0,
-  mouseDY: 0,
-  mouseDown: false,
-  clicked: false,
-  pointerLocked: false,
-};
-
-let targetCanvas = null;
-
-export function initInput(canvas) {
-  targetCanvas = canvas;
-  window.addEventListener('keydown', (ev) => {
-    if (!ev.repeat) input.pressed.add(ev.code);
-    input.keys.add(ev.code);
-    if (ev.code === 'Space') ev.preventDefault();
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    keys.add(e.code);
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault();
   });
-  window.addEventListener('keyup', (ev) => {
-    input.keys.delete(ev.code);
+  window.addEventListener('keyup', (e) => keys.delete(e.code));
+  window.addEventListener('blur', () => keys.clear());
+  window.addEventListener('mousedown', (e) => {
+    if (e.button === 0) { state.mouseDown = true; state.mouseClicked = true; }
+    state.dragging = true; lastX = e.clientX; lastY = e.clientY;
   });
-  window.addEventListener('blur', () => {
-    input.keys.clear();
-    input.mouseDown = false;
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 0) state.mouseDown = false;
+    state.dragging = false;
   });
-  canvas.addEventListener('mousedown', (ev) => {
-    if (ev.button === 0) {
-      input.mouseDown = true;
-      input.clicked = true;
+  window.addEventListener('mousemove', (e) => {
+    if (state.dragging) {
+      state.dragDX += e.clientX - lastX;
+      state.dragDY += e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
     }
-  });
-  window.addEventListener('mouseup', (ev) => {
-    if (ev.button === 0) input.mouseDown = false;
   });
   document.addEventListener('pointerlockchange', () => {
-    input.pointerLocked = document.pointerLockElement === canvas;
+    state.pointerLocked = document.pointerLockElement != null;
   });
-  document.addEventListener('mousemove', (ev) => {
-    if (input.pointerLocked) {
-      input.mouseDX += ev.movementX || 0;
-      input.mouseDY += ev.movementY || 0;
-    }
-  });
+  return state;
 }
 
-export function lockPointer() {
-  if (targetCanvas && document.pointerLockElement !== targetCanvas) {
-    targetCanvas.requestPointerLock();
+export function consumeClick(input) {
+  const c = input.mouseClicked;
+  input.mouseClicked = false;
+  return c;
+}
+
+export function consumeDrag(input) {
+  const dx = input.dragDX;
+  const dy = input.dragDY;
+  input.dragDX = 0;
+  input.dragDY = 0;
+  return { dx, dy };
+}
+
+export function pressedOnce(input, code) {
+  if (input.keys.has(code)) {
+    input.keys.delete(code);
+    return true;
   }
-}
-
-export function unlockPointer() {
-  if (document.pointerLockElement) document.exitPointerLock();
-}
-
-export function keyDown(code) {
-  return input.keys.has(code);
-}
-
-export function keyPressed(code) {
-  return input.pressed.has(code);
-}
-
-// Called once at the end of every frame: one-shot state resets, held state stays.
-export function endFrameInput() {
-  input.pressed.clear();
-  input.mouseDX = 0;
-  input.mouseDY = 0;
-  input.clicked = false;
+  return false;
 }

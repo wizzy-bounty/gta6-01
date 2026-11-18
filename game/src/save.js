@@ -1,54 +1,47 @@
-// save.js — SOLMAR HEAT progress in localStorage.
-// One save slot: money, story progress, player position and the time of day.
-// Written at the safehouse (and automatically when a mission is completed),
-// read back by the Continue button on the start screen.
-
+// save.js — safehouse save / continue for SOLMAR HEAT (localStorage).
 const SAVE_KEY = 'solmar-heat-save-v7';
 
 export function hasSave() {
   try {
-    return window.localStorage.getItem(SAVE_KEY) !== null;
+    return localStorage.getItem(SAVE_KEY) != null;
   } catch {
     return false;
   }
 }
 
-export function loadSave() {
-  try {
-    const raw = window.localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (typeof data !== 'object' || data === null) return null;
-    return data;
-  } catch {
-    return null;
-  }
-}
-
-export function writeSave(state) {
+export function saveGame(snapshot) {
   try {
     const data = {
-      money: Math.round(state.money),
-      missionIndex: state.missionIndex,
-      storyComplete: !!state.storyComplete,
-      health: Math.round(state.health),
-      x: Math.round(state.x * 10) / 10,
-      z: Math.round(state.z * 10) / 10,
-      angle: Math.round(state.angle * 100) / 100,
-      timeOfDay: Math.round(state.timeOfDay * 100) / 100,
+      version: 7,
       savedAt: Date.now(),
+      missionIndex: snapshot.missionIndex,
+      money: snapshot.money,
+      health: snapshot.health,
+      wanted: 0,
+      playerX: snapshot.playerX,
+      playerZ: snapshot.playerZ,
+      timeOfDay: snapshot.timeOfDay,
+      completedMissions: snapshot.completedMissions,
     };
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     return true;
   } catch {
     return false;
   }
 }
 
-export function clearSave() {
+export function loadGame() {
   try {
-    window.localStorage.removeItem(SAVE_KEY);
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || data.version !== 7) return null;
+    return data;
   } catch {
-    /* storage unavailable: nothing to clear */
+    return null;
   }
+}
+
+export function clearSave() {
+  try { localStorage.removeItem(SAVE_KEY); } catch { /* storage unavailable */ }
 }
