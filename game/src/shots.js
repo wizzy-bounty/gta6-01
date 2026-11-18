@@ -1,83 +1,55 @@
-// shots.js — deterministic screenshot setups. Reads ?shot=N from the URL
-// and stages the scene (player/car position, wanted level, active mission,
-// time of day) so the four screenshots are repeatable.
-//   shot=1  police chase — player in a sports car, 2 cop cars behind, 3 stars
-//   shot=2  car theft at night on the Neon Strip, "E — STEAL" prompt
-//   shot=3  mission in progress — heist marker at the yacht, Mara's dialogue
-//   shot=4  on foot in the Marina at noon — peds, traffic, city in view
-export function shotFromUrl() {
-  const q = new URLSearchParams(window.location.search);
-  const n = parseInt(q.get('shot') || '0', 10);
-  return Number.isFinite(n) ? n : 0;
+// shots.js — deterministic screenshot scenes for SOLMAR HEAT.
+// The screenshot script loads the game with ?shot=N; this module then stages
+// one frozen moment of real gameplay — real cars, real police, the real HUD —
+// so the four entry screenshots are honest renders of the game itself:
+//   1 (cover) a golden-hour police chase, helicopter spotlight overhead
+//   2 a car theft under the Neon Strip signs at night
+//   3 the finale briefing on the pier, the Solmar Star at anchor
+//   4 a midday walk in the Marina district, traffic and crowds around
+
+export function isShotMode() {
+  return new URLSearchParams(window.location.search).has('shot');
 }
 
-// Applies a shot setup to the live game state G. Called by main.js after
-// the world is built and the game has started (menu skipped).
-export function applyShot(G, n) {
-  if (!n) return;
-  const S = G.state;
+export function setupShot(game, n) {
   if (n === 1) {
-    // Chase east along Marina road z=-90 at golden hour.
-    S.timeOfDay = 17.5;
-    S.player.inCar = true;
-    const rides = G.traffic.stealable();
-    const ride = rides.find((c) => c.car.model.name === 'Solmar Comet')
-      || rides.find((c) => c.car.model.name === 'Neon Coupe') || rides[0];
-    if (ride) {
-      ride.stolen = true;
-      ride.x = 30; ride.z = -90;
-      ride.heading = Math.PI / 2;
-      ride.speed = 24;
-      S.player.car = ride;
-      S.ownedCar = ride;
-    }
-    S.player.pos.set(30, 0, -90);
-    S.player.heading = Math.PI / 2;
-    G.heat.set(3);
-    G.missions.start(0);
-    G.hud.setObjective('MISSION 1 — FIRST WHEELS', 'Steal a car and reach Mara\'s garage', 'Lose the cops first — or don\'t.');
-    G.hud.dialog('MARA VOSS', 'Three stars already? You drive like you mean it, Vex. Keep it that way.', 9000);
-    // Two cop cars ahead as a roadblock, closing in — visible in frame.
-    const cop1 = G.police.spawnCar({ x: 62, z: -90 });
-    const cop2 = G.police.spawnCar({ x: 70, z: -84 });
-    cop1.x = 62; cop1.z = -90; cop1.heading = -Math.PI / 2; cop1.speed = 0; cop1.staged = true;
-    cop2.x = 70; cop2.z = -84; cop2.heading = -Math.PI / 2; cop2.speed = 0; cop2.staged = true;
+    // COVER — chase at golden hour: the player's coupe runs north up the
+    // marina boulevard with two interceptors on its tail, four stars up,
+    // the helicopter's spotlight sweeping the road, the objective live.
+    game.setTimeOfDay(17.5);
+    game.clearTrafficNear(-76, -10, 140);
+    const car = game.spawnExtraCar('sport', 0xc22418, -76.4, -6, Math.PI);
+    car.speed = 18;
+    game.enterCar(car, { silent: true });
+    game.setAutoDrive(car);
+    const copA = game.spawnPoliceCar(-72.9, 26, Math.PI);
+    copA.speed = 16;
+    const copB = game.spawnPoliceCar(-80.1, 36, Math.PI);
+    copB.speed = 15;
+    game.setWanted(4);
+    game.forcePrompt('');
+    game.setObjective('MARINA SHINE', 'Outrun the Solmar PD — do not let them box you in');
+    game.followCamera(car, { back: 12.5, up: 4.6, side: 3.1 });
   } else if (n === 2) {
-    // Night theft on the Neon Strip (road intersection x=150, z=150).
-    S.timeOfDay = 21.5;
-    S.player.inCar = false;
-    S.player.pos.set(147, 0, 147);
-    S.player.heading = 2.21;
-    const rides2 = G.traffic.stealable();
-    const near = rides2.find((c) => c.car.model.name === 'Neon Coupe')
-      || rides2.find((c) => c.car.model.name === 'Solmar Comet') || rides2[2];
-    if (near) { near.x = 150; near.z = 150; near.heading = 0; near.speed = 0; near.parked = true; }
-    G.heat.set(0);
-    G.missions.start(0);
-    G.hud.setObjective('MISSION 1 — FIRST WHEELS', 'Steal a car and reach Mara\'s garage', 'Press E near a car to steal it.');
-    G.hud.setPrompt('<b>E</b> — STEAL');
-    G.hud.dialog('MARA VOSS', 'That coupe on the Strip is yours if you want it. Just don\'t get spotted.', 9000);
+    // Theft at night in the Neon Strip, outside Club Vex: Riko beside a
+    // red coupe, the steal prompt up, signs glowing behind.
+    game.setTimeOfDay(22.1);
+    game.spawnExtraCar('sport', 0xc22418, 95.5, 43.5, 0.35);
+    game.placeOnFoot(92.6, 40.8, Math.PI / 2 + 0.35);
+    game.forcePrompt('E — STEAL');
+    game.setCamera(88.5, 2.0, 36.5, 97, 1.6, 45);
   } else if (n === 3) {
-    // Heist briefing at the pier, golden hour.
-    S.timeOfDay = 17.2;
-    S.player.inCar = false;
-    S.player.pos.set(222, 0, -46);
-    S.player.heading = 1.35;
-    G.heat.set(1);
-    G.missions.start(5);
-    G.hud.setObjective('MISSION 6 — THE SOLMAR STAR', 'Board the yacht and grab the vault cash', 'Take the pier. The crew will not let you walk in.');
-    G.hud.dialog('MARA VOSS', 'The Solmar Star, tonight. Board her, take the vault, and vanish. Whatever happens — it was a pleasure, Vex.', 12000);
-  } else if (n === 4) {
-    // On foot on the north road, Marina Tower dead ahead to the east.
-    S.timeOfDay = 12.0;
-    S.player.inCar = false;
-    S.player.pos.set(-100, 0, -170);
-    S.player.heading = Math.PI / 2;
-    G.heat.set(0);
-    G.missions.start(0);
-    G.hud.setObjective('MISSION 1 — FIRST WHEELS', 'Steal a car and reach Mara\'s garage', 'Press E near a car to steal it.');
-    G.hud.dialog('MARA VOSS', 'Welcome back to Solmar, Vex. The city missed you. Probably.', 9000);
+    // The finale: on the pier at morning, Mara's briefing on screen, the
+    // Solmar Star casino yacht ahead with its objective marker.
+    game.setTimeOfDay(10.15);
+    game.placeOnFoot(-200, 404, 0);
+    game.missions.start(7); // "The Solmar Job" briefing + first objective
+    game.setCamera(-193.8, 3.6, 393, -200, 2.6, 442);
+  } else {
+    // Midday in the Marina: on foot below the Marina Tower, traffic
+    // passing on the boulevard, the city spread out ahead.
+    game.setTimeOfDay(12.3);
+    game.placeOnFoot(-166.5, 206, -2.25);
+    game.setCamera(-160.8, 2.7, 210.8, -196, 7, 126);
   }
-  // Let the world settle one frame before the screenshot is taken.
-  S.shotSettled = false;
 }

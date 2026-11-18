@@ -1,102 +1,178 @@
-// traffic.js — AI traffic cars cruising the road grid: they pick a road,
-// drive along it, turn at intersections, and brake for the car ahead.
-// They are also stealable: every traffic car is a candidate for E.
-import * as THREE from 'three';
-import { makeCar, createCarState } from './vehicles.js';
-import { mulberry32 } from './city.js';
+// traffic.js — ambient traffic for SOLMAR HEAT.
+// Each traffic car follows the road grid in the correct lane, queues behind
+// slower cars, stops at red lights, and picks a new direction at junctions.
+// Cars are spawned near the player and recycled when they fall far behind,
+// so the city feels busy without simulating the whole map at once.
 
-const ROADS = [-170, -130, -90, -50, -10, 30, 70, 110, 150, 190];
+import { Car } from './vehicles.js';
+import { ROADS } from './city.js';
 
-export function createTraffic(scene, city, count, seed) {
-  const rng = mulberry32(seed || 4242);
-  const cars = [];
-  for (let i = 0; i < count; i++) {
-    const modelIndex = Math.floor(rng() * 6);
-    const car = makeCar(modelIndex);
-    scene.add(car.group);
-    const horiz = rng() < 0.5;
-    const road = ROADS[Math.floor(rng() * ROADS.length)];
-    const along = -190 + rng() * 380;
-    const dir = rng() < 0.5 ? 1 : -1;
-    const st = createCarState(car, horiz ? along : road, horiz ? road : along,
-      horiz ? (dir > 0 ? Math.PI / 2 : -Math.PI / 2) : (dir > 0 ? Math.PI : 0));
-    st.speed = 7 + rng() * 5;
-    st.horiz = horiz;
-    st.dir = dir;
-    st.road = road;
-    st.stolen = false;
-    st.wait = 0;
-    cars.push(st);
+const TRAFFIC_KINDS = ['sedan', 'sedan', 'hatch', 'taxi', 'pickup', 'sport'];
+const TRAFFIC_COLORS = [0xd8d8d8, 0xb03030, 0x3060b0, 0x30a060, 0xe0a020, 0x7030a0, 0x222226, 0xe8e8ec, 0xf0c040];
+
+function laneOffset(dir) {
+  return dir > 0 ? 3.6 : -3.6;
+}
+
+export class Traffic {
+  constructor(scene, city, rng) {
+    this.scene = scene;
+    this.city = city;
+    this.rng = rng;
+    this.cars = [];
+    this.targetCount = 15;
   }
 
-  function carAhead(c) {
-    for (const o of cars) {
-      if (o === c || o.stolen) continue;
-      const dx = o.x - c.x;
-      const dz = o.z - c.z;
-      const d = Math.hypot(dx, dz);
-      if (d > 12 || d < 0.1) continue;
-      // Ahead = roughly in front of c's heading.
-      const fx = Math.sin(c.heading);
-      const fz = -Math.cos(c.heading);
-      if ((dx * fx + dz * fz) / d > 0.8) return d;
+  spawnCar(px, pz) {
+    // Pick a road point 60–170 m from the player.
+    const vertical = this.rng() < 0.5;
+    const line = ROADS[Math.floor(this.rng() * ROADS.length)];
+    const along = Math.max(-360, Math.min(360, (vertical ? pz : px) + (this.rng() * 220 - 110)));
+    const dir = this.rng() < 0.5 ? 1 : -1;
+    let x;
+    let z;
+    let angle;
+    if (vertical) {
+      x = line + laneOffset(dir) * -1; // right-hand traffic
+      z = along;
+      angle = dir > 0 ? 0 : Math.PI;
+      x = line + (dir > 0 ? 3.6 : -3.6);
+    } else {
+      z = line + (dir > 0 ? -3.6 : 3.6);
+      x = along;
+      angle = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
     }
-    return Infinity;
+    const dist = Math.hypot(x - px, z - pz);
+    if (dist < 45) return null;
+    const kind = TRAFFIC_KINDS[Math.floor(this.rng() * TRAFFIC_KINDS.length)];
+    const color = kind === 'taxi' ? 0xf0c040 : TRAFFIC_COLORS[Math.floor(this.rng() * TRAFFIC_COLORS.length)];
+    const car = new Car(this.scene, kind, color, x, z, angle);
+    car.traffic = {
+      axis: vertical ? 'ns' : 'ew',
+      dir,
+      line,
+      cruise: 10 + this.rng() * 4,
+      turnCooldown: 0,
+    };
+    car.speed = car.traffic.cruise * 0.7;
+    this.cars.push(car);
+    return car;
   }
 
-  function update(dt, playerCar) {
-    for (const c of cars) {
-      if (c.parked) {
-        // Staged parked: hold still, but keep the mesh where the state is.
-        c.car.group.position.set(c.x, 0, c.z);
-        c.car.group.rotation.y = c.heading;
+  removeCar(car) {
+    car.remove();
+    this.cars.splice(this.cars.indexOf(car), 1);
+  }
+
+  // The car a mission or the player takes over leaves traffic control.
+  releaseCar(car) {
+    const i = this.cars.indexOf(car);
+    if (i >= 0) this.cars.splice(i, 1);
+    delete car.traffic;
+  }
+
+  update(dt, elapsed, playerPos, allCars) {
+    while (this.cars.length < this.targetCount) {
+      if (!this.spawnCar(playerPos.x, playerPos.z)) break;
+    }
+    for (let i = this.cars.length - 1; i >= 0; i--) {
+      const car = this.cars[i];
+      const d = Math.hypot(car.x - playerPos.x, car.z - playerPos.z);
+      if (d > 260) {
+        this.removeCar(car);
         continue;
       }
-      if (c.stolen) continue; // player drives it now
-      const gap = carAhead(c);
-      const want = gap < 10 ? 0 : 8 + (c.baseSpeed || 9);
-      c.speed += ((gap < 10 ? 0 : 9) - c.speed) * Math.min(1, dt * 1.5);
-      if (gap < 7) c.speed = Math.max(0, c.speed - 20 * dt);
-      const step = c.speed * dt;
-      let nx = c.x + Math.sin(c.heading) * step;
-      let nz = c.z - Math.cos(c.heading) * step;
-      // At an intersection, sometimes turn onto the crossing road.
-      const nearRoadX = ROADS.find((r) => Math.abs(nx - r) < 1.2);
-      const nearRoadZ = ROADS.find((r) => Math.abs(nz - r) < 1.2);
-      if (nearRoadX !== undefined && nearRoadZ !== undefined && rng() < 0.02) {
-        const turnLeft = rng() < 0.5;
-        if (c.horiz) {
-          c.horiz = false;
-          c.road = nearRoadX;
-          c.dir = turnLeft ? -1 : 1;
-          c.heading = c.dir > 0 ? Math.PI : 0;
-          c.x = nearRoadX + (c.dir > 0 ? 0 : 0);
-          nz = nearRoadZ;
-        } else {
-          c.horiz = true;
-          c.road = nearRoadZ;
-          c.dir = turnLeft ? 1 : -1;
-          c.heading = c.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-          c.z = nearRoadZ;
-        }
-      }
-      // Wrap around the city edge instead of driving into the sea.
-      if (nx > 200) { nx = -200; }
-      if (nx < -200) { nx = 200; }
-      if (nz > 200) { nz = -200; }
-      if (nz < -200) { nz = 200; }
-      c.x = nx; c.z = nz;
-      // Keep on its road (snap the cross axis).
-      if (c.horiz) c.z += (c.road - c.z) * Math.min(1, dt * 2);
-      else c.x += (c.road - c.x) * Math.min(1, dt * 2);
-      c.car.group.position.set(c.x, 0, c.z);
-      c.car.group.rotation.y = c.heading;
-      const spin = c.speed * dt * 2.4;
-      for (const w of c.car.wheels) w.rotation.x += spin;
+      this.driveCar(dt, elapsed, car, allCars);
     }
   }
 
-  function stealable() { return cars.filter((c) => !c.stolen); }
+  driveCar(dt, elapsed, car, allCars) {
+    const t = car.traffic;
+    if (!t) return;
+    const fx = car.forwardX();
+    const fz = car.forwardZ();
+    let targetSpeed = t.cruise;
 
-  return { cars, update, stealable };
+    // Slow for anything solid ahead in the same lane.
+    for (const other of allCars) {
+      if (other === car) continue;
+      const dx = other.x - car.x;
+      const dz = other.z - car.z;
+      const ahead = dx * fx + dz * fz;
+      const side = Math.abs(dx * fz - dz * fx);
+      if (ahead > 0 && ahead < 11 && side < 2.4) {
+        targetSpeed = Math.min(targetSpeed, Math.max(0, (ahead - 6) * 1.4));
+      }
+    }
+
+    // Traffic lights: find the next junction ahead on this road.
+    const along = t.axis === 'ns' ? car.z : car.x;
+    const cross = t.axis === 'ns' ? car.x : car.z;
+    for (const lineCoord of ROADS) {
+      const aheadJunction = (lineCoord - along) * t.dir;
+      if (aheadJunction > 2 && aheadJunction < 13) {
+        // Only stop if we are actually on a road crossing this line.
+        const onRoad = ROADS.some((r) => Math.abs(r - cross) < 9);
+        if (onRoad && !this.city.trafficGreenFor(t.axis, elapsed)) {
+          targetSpeed = Math.min(targetSpeed, Math.max(0, (aheadJunction - 7) * 1.1));
+        }
+        break;
+      }
+    }
+
+    // At a junction, sometimes turn onto the crossing road.
+    t.turnCooldown -= dt;
+    if (t.turnCooldown <= 0) {
+      for (const lineCoord of ROADS) {
+        const aheadJunction = (lineCoord - along) * t.dir;
+        if (aheadJunction > -1 && aheadJunction < 1.6 && Math.abs(car.speed) > 2) {
+          const crossLine = Math.round(cross / 80) * 80;
+          if (ROADS.includes(crossLine) && Math.abs(crossLine - cross) < 9 && this.rng() < 0.35) {
+            const newDir = this.rng() < 0.5 ? 1 : -1;
+            if (t.axis === 'ns') {
+              t.axis = 'ew';
+              t.line = crossLine;
+              t.dir = newDir;
+              car.angle = newDir > 0 ? Math.PI / 2 : -Math.PI / 2;
+              car.setPos(car.x, crossLine + (newDir > 0 ? -3.6 : 3.6), car.angle);
+            } else {
+              t.axis = 'ns';
+              t.line = crossLine;
+              t.dir = newDir;
+              car.angle = newDir > 0 ? 0 : Math.PI;
+              car.setPos(crossLine + (newDir > 0 ? 3.6 : -3.6), car.z, car.angle);
+            }
+            t.turnCooldown = 4;
+          }
+          break;
+        }
+      }
+    }
+
+    // Keep the car centred on its lane.
+    let steer = 0;
+    const laneCoord = t.line + (t.axis === 'ns' ? (t.dir > 0 ? 3.6 : -3.6) : t.axis === 'ew' ? 0 : 0);
+    if (t.axis === 'ns') {
+      const err = laneCoord - car.x;
+      steer = Math.max(-0.7, Math.min(0.7, err * 0.14)) * (car.speed < 0 ? -1 : 1);
+      // heading correction toward pure north/south
+      const targetAngle = t.dir > 0 ? 0 : Math.PI;
+      let da = targetAngle - car.angle;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      steer += Math.max(-0.6, Math.min(0.6, da * 1.4));
+    } else {
+      const laneZ = t.line + (t.dir > 0 ? -3.6 : 3.6);
+      const err = car.z - laneZ;
+      steer = Math.max(-0.7, Math.min(0.7, err * 0.14)) * (car.speed < 0 ? -1 : 1);
+      const targetAngle = t.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+      let da = targetAngle - car.angle;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      steer += Math.max(-0.6, Math.min(0.6, da * 1.4));
+    }
+
+    const throttle = car.speed < targetSpeed ? 0.55 : car.speed > targetSpeed + 1 ? -0.7 : 0;
+    car.drive(dt, throttle, steer, this.city);
+  }
 }
