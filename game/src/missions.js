@@ -1,142 +1,190 @@
-// missions.js — "The Solmar Job": 6 story missions from Mara Voss, with markers, dialog, rewards.
+// missions.js — "The Solmar Job": six story missions for SOLMAR HEAT.
+// Each mission has a title, dialogue from Mara Voss, an objective, a
+// gold marker in the world, and a payout. The system tracks the active
+// mission, spawns its enemies, watches for completion (reach a place,
+// steal a car, eliminate guards, escape a wanted level) and pays out.
+
 import * as THREE from 'three';
-import { spawnEnemy, clearEnemies } from './combat.js';
 
 export const MISSIONS = [
   {
-    id: 1, name: 'First Wheels', reward: 500,
-    brief: 'Mara Voss: "Riko, kau bebas. Tapi Solmar tak pernah melepaskan siapa pun. Curi sebuah mobil dan temui aku di Marina."',
-    objective: 'Curi sebuah mobil, lalu pergi ke marker Marina',
-    marker: new THREE.Vector3(200, 1, -100), needCar: true,
+    id: 1, title: 'FRESH OUT',
+    giver: 'MARA VOSS',
+    dialog: "Vex. You're out. The city forgot you — good. Meet me at the Marina Tower and we'll talk about the Solmar Star.",
+    objective: 'Meet Mara Voss at the Marina Tower.',
+    sub: 'Follow the gold marker on your minimap.',
+    target: { x: -150, z: -198 }, type: 'reach', reward: 200,
   },
   {
-    id: 2, name: 'The Getaway', reward: 800,
-    brief: 'Mara Voss: "Bagus. Sekarang polisi sudah menciummu. Kabur ke Neon Strip — jangan sampai ketangkap."',
-    objective: 'Kabur ke Neon Strip dengan wanted 2',
-    marker: new THREE.Vector3(40, 1, 180), forceWanted: 2, needCar: true,
+    id: 2, title: 'HOT WHEELS',
+    giver: 'MARA VOSS',
+    dialog: "First rule of the job: never drive your own car. Steal one — any one — and bring it to the Old Town garage. Quick and quiet.",
+    objective: 'Steal a car and drive it to the Old Town garage.',
+    sub: 'Press E near a car to steal it. Watch the wanted stars.',
+    target: { x: 150, z: -150 }, type: 'steal-drive', reward: 400,
   },
   {
-    id: 3, name: 'Silent Docks', reward: 1200,
-    brief: 'Mara Voss: "Paket ada di gudang Docks. Tiga penjaga. Buat mereka diam — dengan cara apa pun."',
-    objective: 'Kalahkan 3 penjaga di Docks',
-    marker: new THREE.Vector3(-180, 1, 180), kills: 3, spawn: [[-175, 175], [-185, 185], [-170, 190]],
+    id: 3, title: 'NEON RUN',
+    giver: 'MARA VOSS',
+    dialog: "A package is waiting on the Neon Strip. Pick it up. The Strip's boys won't like you taking it — be ready.",
+    objective: 'Pick up the package on the Neon Strip.',
+    sub: 'Then deal with whoever shows up.',
+    target: { x: -120, z: 60 }, type: 'pickup', reward: 500,
+    enemies: [{ x: -112, z: 68 }, { x: -128, z: 52 }],
   },
   {
-    id: 4, name: 'Hot Pursuit', reward: 1500,
-    brief: 'Mara Voss: "Polisi mengepung kota. Lewati 4 checkpoint sebelum mereka menutup jalan."',
-    objective: 'Lewati 4 checkpoint (0/4)',
-    checkpoints: [new THREE.Vector3(-130, 1, -130), new THREE.Vector3(130, 1, -65), new THREE.Vector3(65, 1, 195), new THREE.Vector3(-65, 1, 65)],
-    forceWanted: 3, needCar: true,
+    id: 4, title: 'DOCKSIDE DEAL',
+    giver: 'MARA VOSS',
+    dialog: "The Docks crew is holding the blueprints for the Star's vault. Take them down, grab the case, and don't get shot.",
+    objective: 'Eliminate the Docks guards and take the case.',
+    sub: 'F to punch, click to shoot.',
+    target: { x: 150, z: 150 }, type: 'eliminate', reward: 800,
+    enemies: [{ x: 142, z: 142 }, { x: 158, z: 158 }, { x: 150, z: 166 }],
   },
   {
-    id: 5, name: 'The Yacht', reward: 2500,
-    brief: 'Mara Voss: "Kasino kapal itu menyimpan brankas. Bersihkan deknya, ambil kopernya."',
-    objective: 'Kalahkan 4 penjaga di kapal pesiar, ambil koper',
-    marker: new THREE.Vector3(322, 1, -60), kills: 4, spawn: [[318, -52], [330, -68], [322, -48], [340, -55]],
+    id: 5, title: 'HEAT RISING',
+    giver: 'MARA VOSS',
+    dialog: "The law is on us, Vex — three stars and climbing. Lose them. Get to the safehouse in Old Town and stay out of sight.",
+    objective: 'Escape the police and reach the safehouse.',
+    sub: 'Lose your wanted level, then reach the marker.',
+    target: { x: 90, z: -210 }, type: 'escape', reward: 1000,
+    forceWanted: 3,
   },
   {
-    id: 6, name: 'The Big Score', reward: 5000,
-    brief: 'Mara Voss: "Ini dia, Riko. Menara Marina. Ambil isinya, lalu hilang ke hideout — wanted 5 menunggumu."',
-    objective: 'Capai Menara Marina, lalu kabur ke hideout',
-    marker: new THREE.Vector3(162, 1, -162), escape: new THREE.Vector3(-162, 1, -162), forceWanted: 5,
+    id: 6, title: 'THE SOLMAR JOB',
+    giver: 'MARA VOSS',
+    dialog: "This is it. The Solmar Star, the casino yacht. Guards on the pier — clear them, get aboard, and the vault is ours. One last job, Vex.",
+    objective: 'Clear the pier guards and board the Solmar Star.',
+    sub: 'Then reach the escape boat at the end of the pier.',
+    target: { x: -60, z: -252 }, type: 'heist', reward: 2500,
+    enemies: [{ x: -72, z: -238 }, { x: -48, z: -238 }, { x: -66, z: -246 }, { x: -54, z: -246 }],
   },
 ];
-export function createMissions(G) {
-  const M = {
-    markerMesh: null, ring: null, checkpointIndex: 0, killsDone: 0, stage: 'go',
-    start(i) {
-      G.missionIndex = i;
-      const m = MISSIONS[i];
-      M.checkpointIndex = 0; M.killsDone = 0; M.stage = 'go';
-      clearEnemies(G);
-      if (m.spawn) for (const [x, z] of m.spawn) spawnEnemy(G, x, z);
-      if (m.forceWanted !== undefined && G.wanted < m.forceWanted) G.wanted = m.forceWanted;
-      G.hud.updateWanted(G.wanted);
-      G.hud.setObjective(m.objective);
-      G.hud.showDialog('MARA VOSS', m.brief);
-      G.hud.setMissionTitle('MISI ' + m.id + '/6 — ' + m.name);
-      M.updateMarker();
-    },
-    updateMarker() {
-      const m = MISSIONS[G.missionIndex];
-      const pos = M.currentTarget();
-      if (!M.markerMesh) {
-        const geo = new THREE.CylinderGeometry(3, 3, 0.3, 24);
-        M.markerMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.75 }));
-        G.scene.add(M.markerMesh);
-        const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 26, 8, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.18, side: THREE.DoubleSide }));
-        beam.position.y = 13; M.markerMesh.add(beam);
+
+export class MissionSystem {
+  constructor(scene, combat) {
+    this.scene = scene;
+    this.combat = combat;
+    this.index = 0;
+    this.phase = 'go'; // go | fight | escape | done
+    this.marker = this._buildMarker();
+    this.scene.add(this.marker);
+    this.onEvent = null; // (type, data) — main.js wires dialog/toast/sound
+    this._pickupDone = false;
+  }
+
+  _buildMarker() {
+    const group = new THREE.Group();
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.2, 2.2, 60, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    beam.position.y = 30;
+    group.add(beam);
+    const diamond = new THREE.Mesh(
+      new THREE.OctahedronGeometry(2.4),
+      new THREE.MeshBasicMaterial({ color: 0xffd23e }),
+    );
+    diamond.position.y = 12;
+    diamond.name = 'diamond';
+    group.add(diamond);
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(4.5, 0.35, 8, 32),
+      new THREE.MeshBasicMaterial({ color: 0xffd23e }),
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.3;
+    group.add(ring);
+    return group;
+  }
+
+  get current() { return MISSIONS[this.index] || null; }
+  get finished() { return this.index >= MISSIONS.length; }
+
+  /** Start (or restart) the mission at `index`. */
+  start(index, state) {
+    this.index = index;
+    this.phase = 'go';
+    this._pickupDone = false;
+    const m = this.current;
+    if (!m) return;
+    this.combat.clearEnemies();
+    if (m.forceWanted && state.wanted < m.forceWanted) state.wanted = m.forceWanted;
+    if (this.onEvent) this.onEvent('dialog', { who: m.giver, line: m.dialog });
+    if (this.onEvent) this.onEvent('objective', m);
+    this._placeMarker();
+  }
+
+  _placeMarker() {
+    const m = this.current;
+    if (!m) { this.marker.visible = false; return; }
+    this.marker.visible = true;
+    this.marker.position.set(m.target.x, 0, m.target.z);
+  }
+
+  /** Called every frame; returns 'complete' when the mission finishes. */
+  update(dt, state, playerPos, inCar, stoleCar) {
+    const m = this.current;
+    if (!m) return null;
+    const diamond = this.marker.getObjectByName('diamond');
+    if (diamond) {
+      diamond.rotation.y += dt * 2;
+      diamond.position.y = 12 + Math.sin(performance.now() * 0.002) * 1.2;
+    }
+    const dist = Math.hypot(playerPos.x - m.target.x, playerPos.z - m.target.z);
+    if (this.phase === 'go') {
+      if (m.type === 'reach' && dist < 8) return this._complete(state);
+      if (m.type === 'steal-drive' && stoleCar && dist < 10) return this._complete(state);
+      if (m.type === 'pickup' && dist < 6) {
+        this.phase = 'fight';
+        this._pickupDone = true;
+        for (const e of m.enemies || []) this.combat.spawnEnemy(e.x, e.z);
+        if (this.onEvent) this.onEvent('dialog', { who: 'MARA VOSS', line: "Package secured. Company incoming — handle them, Vex." });
+        if (this.onEvent) this.onEvent('objective', { ...m, objective: 'Eliminate the Strip thugs.', sub: 'F to punch, click to shoot.' });
       }
-      M.markerMesh.position.set(pos.x, 0.4, pos.z);
-      M.markerMesh.visible = true;
-    },
-    currentTarget() {
-      const m = MISSIONS[G.missionIndex];
-      if (!m) return new THREE.Vector3(0, 1, 0);
-      if (m.checkpoints) return m.checkpoints[Math.min(M.checkpointIndex, m.checkpoints.length - 1)];
-      if (m.escape && M.stage === 'escape') return m.escape;
-      return m.marker;
-    },
-    onEnemyDown(G2) {
-      const m = MISSIONS[G2.missionIndex];
-      if (!m || !m.kills) return;
-      M.killsDone++;
-      G2.hud.setObjective(m.objective + ' (' + M.killsDone + '/' + m.kills + ')');
-      if (M.killsDone >= m.kills) M.complete(G2);
-    },
-    update(G2, dt) {
-      const m = MISSIONS[G2.missionIndex];
-      if (!m || G2.state !== 'playing') return;
-      if (M.markerMesh) {
-        M.markerMesh.rotation.y += dt * 1.5;
-        M.markerMesh.material.opacity = 0.55 + Math.sin(G2.time * 3) * 0.2;
+      if (m.type === 'eliminate' && dist < 30 && this.combat.aliveCount === 0 && !this._spawned) {
+        this._spawned = true;
+        for (const e of m.enemies || []) this.combat.spawnEnemy(e.x, e.z);
+        if (this.onEvent) this.onEvent('dialog', { who: 'MARA VOSS', line: "There they are. Make it quick." });
       }
-      const pp = G2.player.group.position;
-      const target = M.currentTarget();
-      const d = Math.hypot(pp.x - target.x, pp.z - target.z);
-      if (m.checkpoints) {
-        if (d < 6) {
-          M.checkpointIndex++;
-          G2.audio.pickup();
-          if (M.checkpointIndex >= m.checkpoints.length) { M.complete(G2); return; }
-          G2.hud.setObjective('Lewati 4 checkpoint (' + M.checkpointIndex + '/4)');
-          G2.hud.toast('Checkpoint ' + M.checkpointIndex + '/4!');
-          M.updateMarker();
+      if (m.type === 'escape') {
+        if (state.wanted === 0 && dist < 10) return this._complete(state);
+        if (state.wanted === 0 && dist >= 10) {
+          if (this.onEvent) this.onEvent('hint', 'Clean! Now get to the safehouse marker.');
         }
-        return;
       }
-      if (m.kills) return; // completion via kills
-      if (m.escape && M.stage === 'go' && d < 6) {
-        M.stage = 'escape';
-        G2.wanted = 5; G2.hud.updateWanted(5);
-        G2.hud.setObjective('Kabur ke hideout! Wanted 5!');
-        G2.hud.showDialog('MARA VOSS', '"Mereka semua mengejarmu sekarang. Jangan berhenti, Riko!"');
-        M.updateMarker();
-        return;
+      if (m.type === 'heist' && dist < 34 && this.combat.aliveCount === 0 && !this._spawned) {
+        this._spawned = true;
+        for (const e of m.enemies || []) this.combat.spawnEnemy(e.x, e.z);
+        if (this.onEvent) this.onEvent('dialog', { who: 'MARA VOSS', line: "Guards on the pier. Clear them and the Star is ours." });
       }
-      if (d < 6) {
-        if (m.needCar && !G2.player.car) { G2.hud.showPrompt('Butuh mobil untuk misi ini'); return; }
-        M.complete(G2);
+    } else if (this.phase === 'fight') {
+      if (this.combat.aliveCount === 0) return this._complete(state);
+    }
+    // Eliminate-type missions complete when all spawned guards are down.
+    if ((m.type === 'eliminate' || m.type === 'heist') && this._spawned && this.combat.aliveCount === 0) {
+      if (m.type === 'eliminate') return this._complete(state);
+      if (m.type === 'heist' && dist < 8) return this._complete(state);
+      if (m.type === 'heist') {
+        if (this.onEvent) this.onEvent('objective', { ...m, objective: 'Board the Solmar Star — reach the yacht.', sub: 'The pier is clear. Go!' });
       }
-    },
-    complete(G2) {
-      const m = MISSIONS[G2.missionIndex];
-      G2.player.money += m.reward;
-      G2.missionsCompleted[G2.missionIndex] = true;
-      G2.hud.updateMoney(G2.player.money);
-      G2.hud.toast('Misi selesai! +$' + m.reward);
-      G2.audio.missionDone();
-      if (M.markerMesh) M.markerMesh.visible = false;
-      clearEnemies(G2);
-      if (G2.missionIndex >= MISSIONS.length - 1) {
-        G2.state = 'complete';
-        G2.hud.showComplete();
-        G2.hud.setObjective('SOLMAR LEGEND — semua misi selesai!');
-        return;
-      }
-      M.start(G2.missionIndex + 1);
-    },
-  };
-  G.missions = M;
-  return M;
+    }
+    return null;
+  }
+
+  _complete(state) {
+    const m = this.current;
+    state.money += m.reward;
+    state.completedMissions.push(m.id);
+    this._spawned = false;
+    if (this.onEvent) this.onEvent('complete', m);
+    this.index += 1;
+    if (this.finished) {
+      this.marker.visible = false;
+      if (this.onEvent) this.onEvent('allDone', null);
+      return 'complete';
+    }
+    this.start(this.index, state);
+    return 'complete';
+  }
 }

@@ -1,47 +1,117 @@
-// traffic.js — AI traffic cars cruising the road grid.
-import * as THREE from 'three';
-import { ROADS, mulberry32 } from './city.js';
-import { makeCarMesh } from './vehicles.js';
+// traffic.js — traffic AI for SOLMAR HEAT.
+// Cars cruise the road grid on rectangular loops: each car follows a
+// sequence of road-line waypoints, slows for the car ahead, and keeps
+// the streets alive. Traffic cars can be stolen (they stop when the
+// player gets close and presses E).
 
-const COLORS = [0xb8b8c0, 0x3a6ab8, 0xc8a03a, 0x5a8a5a, 0x8a3a3a, 0xd8d8d8, 0x2a2a30];
-export function spawnTraffic(G) {
-  const rng = mulberry32(4242);
-  for (let i = 0; i < 16; i++) {
-    const road = ROADS[Math.floor(rng() * ROADS.length)];
-    const along = -220 + rng() * 440;
-    const horizontal = rng() > 0.5;
-    const lane = (rng() > 0.5 ? 3.5 : -3.5);
-    const mesh = makeCarMesh(COLORS[i % COLORS.length], 'sedan');
-    const pos = horizontal ? new THREE.Vector3(along, 0, road + lane) : new THREE.Vector3(road + lane, 0, along);
-    mesh.position.copy(pos);
-    const heading = horizontal ? (lane > 0 ? Math.PI / 2 : -Math.PI / 2) : (lane > 0 ? 0 : Math.PI);
-    mesh.rotation.y = heading;
-    G.scene.add(mesh);
-    G.cars.push({ mesh, heading, speed: 8 + rng() * 6, kind: 'sedan', parked: false, stolen: false, health: 100, ai: { road, horizontal, lane, cruise: 8 + rng() * 6 } });
+import { makeCar, randomCarColor } from './vehicles.js';
+import { ROAD_LINES, resolveCollisions } from './city.js';
+
+const ROAD_HALF = 7;
+
+export class TrafficSystem {
+  constructor(scene, rng) {
+    this.scene = scene;
+    this.rng = rng;
+    this.cars = [];
+    this._spawnInitial();
   }
-}
-export function updateTraffic(G, dt) {
-  const pp = G.player.group.position;
-  for (const c of G.cars) {
-    if (!c.ai || c === G.player.car) continue;
-    // slow down if something is right ahead
-    let target = c.ai.cruise;
-    const fx = Math.sin(c.heading), fz = Math.cos(c.heading);
-    for (const o of G.cars) {
-      if (o === c) continue;
-      const dx = o.mesh.position.x - c.mesh.position.x, dz = o.mesh.position.z - c.mesh.position.z;
-      const ahead = dx * fx + dz * fz;
-      const side = Math.abs(dx * fz - dz * fx);
-      if (ahead > 0 && ahead < 9 && side < 2.5) { target = 0; break; }
+
+  _spawnInitial() {
+    for (let i = 0; i < 12; i++) {
+      const car = makeCar(
+        this.scene,
+        randomCarColor(this.rng),
+        this._pickRoadCoord(), this._pickRoadCoord(),
+        this.rng() < 0.5 ? 0 : Math.PI / 2,
+        { sport: this.rng() < 0.15 },
+      );
+      car.route = this._makeRoute(car.x, car.z);
+      car.routeIndex = 0;
+      car.cruiseSpeed = 8 + this.rng() * 5;
+      car.stopped = false;
+      this.cars.push(car);
     }
-    const pdx = pp.x - c.mesh.position.x, pdz = pp.z - c.mesh.position.z;
-    if (pdx * fx + pdz * fz > 0 && pdx * fx + pdz * fz < 8 && Math.abs(pdx * fz - pdz * fx) < 2.5 && G.player.onFoot) target = 0;
-    c.speed += (target - c.speed) * Math.min(1, dt * 1.5);
-    c.mesh.position.x += fx * c.speed * dt;
-    c.mesh.position.z += fz * c.speed * dt;
-    // wrap around the grid
-    const p = c.mesh.position;
-    if (c.ai.horizontal) { if (p.x > 250) p.x = -250; if (p.x < -250) p.x = 250; }
-    else { if (p.z > 250) p.z = -250; if (p.z < -250) p.z = 250; }
+  }
+
+  _pickRoadCoord() {
+    return ROAD_LINES[Math.floor(this.rng() * ROAD_LINES.length)] + (this.rng() - 0.5) * 6;
+  }
+
+  /** A loop of waypoints that stays on the road lines. */
+  _makeRoute(x, z) {
+    const route = [];
+    let cx = x, cz = z;
+    const horizontalFirst = this.rng() < 0.5;
+    for (let i = 0; i < 8; i++) {
+      const horizontal = (i % 2 === 0) === horizontalFirst;
+      if (horizontal) {
+        cz = ROAD_LINES[Math.floor(this.rng() * ROAD_LINES.length)];
+        cx = -210 + this.rng() * 420;
+      } else {
+        cx = ROAD_LINES[Math.floor(this.rng() * ROAD_LINES.length)];
+        cz = -210 + this.rng() * 420;
+      }
+      route.push({ x: cx, z: cz });
+    }
+    return route;
+  }
+
+  /** Nearest traffic car within `radius` of (x, z), or null. */
+  nearestCar(x, z, radius) {
+    let best = null, bestD = radius;
+    for (const car of this.cars) {
+      const dx = car.x - x, dz = car.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d < bestD) { bestD = d; best = car; }
+    }
+    return best;
+  }
+
+  removeCar(car) {
+    const i = this.cars.indexOf(car);
+    if (i >= 0) this.cars.splice(i, 1);
+  }
+
+  update(dt, playerPos, playerSpeed) {
+    for (const car of this.cars) {
+      if (car.stopped) continue;
+      const target = car.route[car.routeIndex];
+      const dx = target.x - car.x, dz = target.z - car.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < 6) {
+        car.routeIndex = (car.routeIndex + 1) % car.route.length;
+        continue;
+      }
+      const wantHeading = Math.atan2(dx, dz);
+      let dh = wantHeading - car.heading;
+      while (dh > Math.PI) dh -= Math.PI * 2;
+      while (dh < -Math.PI) dh += Math.PI * 2;
+      car.heading += Math.max(-1.6 * dt, Math.min(1.6 * dt, dh));
+      // Slow down for the car ahead.
+      let speedTarget = car.cruiseSpeed * Math.max(0.35, 1 - Math.abs(dh));
+      for (const other of this.cars) {
+        if (other === car) continue;
+        const ox = other.x - car.x, oz = other.z - car.z;
+        const ahead = ox * Math.sin(car.heading) + oz * Math.cos(car.heading);
+        const side = Math.abs(ox * Math.cos(car.heading) - oz * Math.sin(car.heading));
+        if (ahead > 0 && ahead < 9 && side < 3) { speedTarget = 0; break; }
+      }
+      // Brake for a nearby player on foot.
+      if (playerPos) {
+        const px = playerPos.x - car.x, pz = playerPos.z - car.z;
+        const ahead = px * Math.sin(car.heading) + pz * Math.cos(car.heading);
+        const side = Math.abs(px * Math.cos(car.heading) - pz * Math.sin(car.heading));
+        if (ahead > 0 && ahead < 8 && side < 3 && playerSpeed < 2) speedTarget = 0;
+      }
+      car.speed += (speedTarget - car.speed) * Math.min(1, 2.5 * dt);
+      car.x += Math.sin(car.heading) * car.speed * dt;
+      car.z += Math.cos(car.heading) * car.speed * dt;
+      resolveCollisions(car, 1.6, []);
+      car.mesh.position.set(car.x, 0, car.z);
+      car.mesh.rotation.y = car.heading;
+      car.wheelSpin += car.speed * dt * 2;
+      for (const w of car.mesh.userData.wheels) w.rotation.x = car.wheelSpin;
+    }
   }
 }

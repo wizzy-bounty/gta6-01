@@ -1,4 +1,4 @@
-// A tiny static server for game/ (Node 22, standard library only), so SOLMAR HEAT can be played
+// A tiny static server for game/ (Node 22, standard library only), so an entry can be played
 // locally without a build step: `node serve.ts` serves game/ on http://localhost:8080.
 // It sends the MIME types a browser game needs, refuses any path outside game/, and otherwise
 // does nothing clever: this is a development convenience, not a web server for the internet.
@@ -13,7 +13,7 @@ const portIndex = args.indexOf('--port');
 const requested = portIndex === -1 ? 8080 : Number(args[portIndex + 1]);
 const port = Number.isInteger(requested) && requested > 0 && requested < 65536 ? requested : 8080;
 
-const MIME = {
+const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
@@ -39,7 +39,7 @@ const MIME = {
 
 createServer((request, response) => {
   const url = new URL(request.url ?? '/', 'http://localhost');
-  let pathname;
+  let pathname: string;
   try {
     pathname = decodeURIComponent(url.pathname);
   } catch {
@@ -52,7 +52,7 @@ createServer((request, response) => {
     response.writeHead(403).end('forbidden');
     return;
   }
-  let size;
+  let size: number;
   try {
     const stats = statSync(file);
     if (!stats.isFile()) throw new Error('not a file');

@@ -1,39 +1,59 @@
-// save.js — localStorage save / load for SOLMAR HEAT progress.
-const KEY = 'solmar-heat-save-v1';
-export function saveGame(G) {
-  try {
-    const data = {
-      version: 1,
-      missionIndex: G.missionIndex,
-      money: G.player.money,
-      health: G.player.health,
-      timeOfDay: G.timeOfDay,
-      pos: [G.player.group.position.x, G.player.group.position.y, G.player.group.position.z],
-      heading: G.player.heading,
-      completed: G.missionsCompleted.slice(),
-      savedAt: Date.now(),
-    };
-    localStorage.setItem(KEY, JSON.stringify(data));
-    return true;
-  } catch { return false; }
+// save.js — localStorage save / load for SOLMAR HEAT.
+// Stores mission progress, cash, health, player position and the time of
+// day under one key. Loading a save never throws: corrupt data falls back
+// to a fresh game.
+
+const SAVE_KEY = 'solmar-heat-save-v1';
+
+export function defaultSave() {
+  return {
+    mission: 0,
+    money: 250,
+    health: 100,
+    player: { x: -150, z: -180 },
+    timeOfDay: 10,
+    completedMissions: [],
+  };
 }
+
 export function loadSave() {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = window.localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
-    const d = JSON.parse(raw);
-    if (!d || d.version !== 1) return null;
-    return d;
-  } catch { return null; }
+    const data = JSON.parse(raw);
+    if (typeof data !== 'object' || data === null) return null;
+    const fresh = defaultSave();
+    return {
+      mission: Number.isInteger(data.mission) ? data.mission : fresh.mission,
+      money: typeof data.money === 'number' ? data.money : fresh.money,
+      health: typeof data.health === 'number' ? data.health : fresh.health,
+      player: data.player && typeof data.player.x === 'number' && typeof data.player.z === 'number'
+        ? { x: data.player.x, z: data.player.z } : fresh.player,
+      timeOfDay: typeof data.timeOfDay === 'number' ? data.timeOfDay : fresh.timeOfDay,
+      completedMissions: Array.isArray(data.completedMissions) ? data.completedMissions : [],
+    };
+  } catch {
+    return null;
+  }
 }
-export function hasSave() { return loadSave() !== null; }
-export function clearSave() { try { localStorage.removeItem(KEY); } catch {} }
-export function applySave(G, d) {
-  G.missionIndex = Math.min(d.missionIndex || 0, 5);
-  G.player.money = d.money || 0;
-  G.player.health = d.health || 100;
-  G.timeOfDay = d.timeOfDay ?? 10;
-  if (Array.isArray(d.pos)) G.player.group.position.set(d.pos[0], d.pos[1], d.pos[2]);
-  if (typeof d.heading === 'number') G.player.heading = d.heading;
-  if (Array.isArray(d.completed)) G.missionsCompleted = d.completed.slice(0, 6);
+
+export function writeSave(state) {
+  try {
+    const data = {
+      mission: state.missionIndex,
+      money: Math.round(state.money),
+      health: Math.round(state.health),
+      player: { x: Math.round(state.playerPos.x * 10) / 10, z: Math.round(state.playerPos.z * 10) / 10 },
+      timeOfDay: state.timeOfDay,
+      completedMissions: state.completedMissions,
+    };
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearSave() {
+  try { window.localStorage.removeItem(SAVE_KEY); } catch { /* storage unavailable */ }
 }

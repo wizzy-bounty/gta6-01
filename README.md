@@ -1,67 +1,99 @@
-# SOLMAR HEAT — Open-World Crime Game (make.fun gta6-01)
+# SOLMAR HEAT
 
 [![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/wizzy-bounty/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/wizzy-bounty/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-**SOLMAR HEAT** is a complete open-world crime game that runs offline in a desktop
-browser from static files. You are **Riko "Vex" Marlowe**, a getaway driver fresh out
-of prison, pulled back into Solmar City's underworld by **Mara Voss** — six heist
-missions ("The Solmar Job") leading to the yacht-casino score.
+An open-world crime game in the browser — built for the make.fun **gta6-01**
+"Make GTA 6" bounty. 100% original: its own city, characters, vehicles,
+story, art, sounds and music. No build step, no network: serve `game/` with
+any static server and play in desktop Chrome.
 
-## The city
+## The game
 
-Solmar City is a sun-soaked coastal city with four distinct districts — blue-white
-**Marina**, yellow-brick **Old Town**, purple-pink **Neon Strip** (by night) and
-rust-grey **Docks** — plus a beach, a pier, a yacht casino, a tower landmark and a
-bridge. Day and night cycle; streetlights and neon come alive after dark.
+You are **Riko "Vex" Marlowe**, a getaway driver fresh out of prison, pulled
+back into Solmar City's underworld by **Mara Voss**. Run **The Solmar Job** —
+a chain of six story missions ending in a heist on the Solmar Star, a casino
+yacht moored in the Marina.
 
-## Systems
+**Solmar City** is a sun-soaked coastal city in four districts, each with its
+own palette: the blue-white **Marina**, the yellow-brick **Old Town**, the
+purple-pink **Neon Strip** (alive at night), and the rust-grey **Docks**.
+Landmarks: the Marina Tower, the Solmar Star yacht casino, and the Harbor
+Bridge.
 
-- **Explore on foot and by car** — third-person walking, arcade chase-camera driving
-- **Traffic and pedestrians** — AI cars cruise the road grid, walkers stroll the sidewalks
-- **Steal cars** — press E near any parked car (the police notice)
-- **Wanted level 1–5** — police cars chase and ram, foot cops close in; lay low to cool off, or get busted
-- **6 story missions** — markers, dialog, checkpoints, armed guards, a finale escape at wanted 5
-- **Combat** — punch (F) and shoot (mouse click) with return fire from armed enemies
-- **HUD + live minimap** — wanted stars, money, health, objective, mission marker, police blips
-- **Start screen + save** — progress (mission, money, position) autosaves and persists in localStorage
-- **Polish** — synthesized WebAudio (engine, sirens, gunshots, music loop), dust/spark/muzzle effects, pause menu
+### Systems
+
+- **On foot + driving** — third-person walking with an orbit camera, and
+  arcade car handling with a chase camera.
+- **Traffic + pedestrians** — AI cars cruise the road grid, AI walkers stroll
+  the sidewalks (and flee from gunfire and speeding cars).
+- **Steal cars** — walk up to any parked or traffic car and press **E**.
+- **Wanted level 1–5** — crime in sight of the law raises your stars;
+  police AI chases and rams you, sirens wailing; hide to cool off. At 5
+  stars a police helicopter circles overhead.
+- **6 story missions** — markers, short dialogue with Mara Voss, objective
+  HUD, payouts that grow with the heat.
+- **Combat** — punch (**F**) and shoot (mouse click) against armed guards.
+- **HUD + minimap** — wanted stars, cash, health, mission objective, and a
+  live 2D minimap with police, traffic and the mission marker.
+- **Start screen + save** — progress, cash and position persist in
+  localStorage.
+- **Polish** — synthesized WebAudio (engine, sirens, gunshots, a music
+  loop), dust and muzzle-flash effects, a full day/night cycle, pause menu.
 
 ## Controls
 
 | Key | Action |
 | --- | --- |
-| WASD | Walk / drive |
-| Shift | Run |
-| Mouse | Camera (drag) / shoot (click) |
+| WASD / arrows | Walk / drive |
+| Mouse | Orbit camera (click to lock) |
 | E | Steal / enter / exit car |
 | F | Punch |
-| Esc / P | Pause |
+| Click | Shoot |
+| Shift | Sprint |
+| Space | Handbrake |
+| P | Pause |
 | M | Mute |
 
-## Play it
+## Play
 
 ```sh
 node serve.ts
 # open http://localhost:8080
 ```
 
-Screenshot mode: open `index.html?shot=1..4` for the four deterministic staged shots
-(police chase, night car theft, yacht heist, Marina on foot).
+Or any static server over `game/` (e.g. `python3 -m http.server` inside
+`game/`). Everything the game loads lives under `game/`; three.js r160 is
+vendored at `game/vendor/three.min.js`.
 
-## Build
+## Screenshots
 
-`main.ts` (Node 22, stdlib only) copies `game/` and `screenshots/` to `/output` and
-writes `dossier.json` with the kit's `vendor/makefun-game.ts`:
+Deterministic modes: open `?shot=1` (police chase, wanted 3), `?shot=2`
+(car theft on the Neon Strip at night), `?shot=3` (the yacht-casino
+mission with Mara's dialogue), `?shot=4` (on foot in the Marina by day).
 
-```sh
-mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+## Structure
+
 ```
-
-Three.js r160 is vendored under `game/vendor/three.min.js`. All game code, art, names,
-story and sounds are original — nothing from any commercial game.
+game/
+  index.html            page + HUD DOM + import map
+  src/main.js           game loop, player + driving, day/night, states
+  src/city.js           Solmar City: districts, buildings, landmarks
+  src/vehicles.js       car meshes (player, traffic, police)
+  src/traffic.js        traffic AI on the road grid
+  src/pedestrians.js    pedestrian AI on the sidewalks
+  src/police.js         police chase AI + helicopter at 5 stars
+  src/missions.js       The Solmar Job: 6 missions, dialogue, markers
+  src/combat.js         punch + shoot, armed enemies
+  src/hud.js            HUD, minimap, dialogs, prompts
+  src/audio.js          synthesized WebAudio: engine, siren, shots, music
+  src/save.js           localStorage save / load
+  src/input.js          keyboard + mouse input
+  src/shots.js          deterministic ?shot=N screenshot setups
+main.ts                 entry program (Node 22 stdlib) → /output + dossier.json
+```
 
 ## License
 
-MIT — see `LICENSE`.
+MIT — see [LICENSE](LICENSE).
