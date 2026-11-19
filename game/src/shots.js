@@ -1,6 +1,8 @@
-// Screenshot mode: ?shot=N sets up a deterministic scene (player/car
+// Screenshot mode (v8): ?shot=N sets up a deterministic scene (player/car
 // position, wanted level, active mission, time of day) so the four
-// screenshots can be retaken with identical content.
+// screenshots can be retaken with identical content. The v8 scenes show
+// the new systems: 1 = five-star chase with helicopter + roadblock,
+// 2 = roadblock close-up, 3 = street-race start grid, 4 = the garage.
 import * as THREE from 'three';
 
 export function applyShotMode(G) {
@@ -25,61 +27,60 @@ export function applyShotMode(G) {
   }
 
   if (shot === 1) {
-    // COVER: police chase — player in a sports car, 2 patrol cars ahead
-    // closing in, 3 stars, sirens, minimap + objective visible, late sun.
-    G.timeOfDay = 0.45;
+    // COVER: five-star chase at golden hour — player in a sports car, two
+    // patrol cars closing in, a roadblock ahead and the helicopter up.
+    G.timeOfDay = 0.46;
     placeCarAt(0, 60, Math.PI, 'sport');
+    P.wanted = 5;
+    P.money = 12400;
+    G.missions.index = 6;
+    G.missions.step = 0;
+    G.missions.active = true;
+    G.hud.setObjective('HEAT RISING', 'Survive 60 seconds at 5 stars — the helicopter is up', 'Mission 7/8 · Reward $8,000');
+    G._shotPoliceSpots = [{ x: -4, z: 30 }, { x: 4, z: 26 }];
+    G._shotBlockAhead = true;
+    G._shotHeliFront = true;
+    G.audio.siren(true);
+  } else if (shot === 2) {
+    // ROADBLOCK: stopped short of the spikes, patrol cars across the road,
+    // light bars flashing, three stars.
+    G.timeOfDay = 0.47;
+    const car = placeCarAt(0, 84, Math.PI, 'sport');
+    car.speed = 0;
     P.wanted = 3;
+    P.money = 4700;
     G.missions.index = 2;
     G.missions.step = 1;
     G.missions.active = true;
     G.hud.setObjective('CONTAINER HEIST', 'Escape to the Playa beach — lose the tail', 'Mission 3/8 · Reward $3,500');
-    // Two police cars ahead on the same road, closing in (spawned by main.js).
-    G._shotPoliceSpots = [{ x: -4, z: 30 }, { x: 4, z: 26 }];
+    G._shotBlockAhead = true;
     G.audio.siren(true);
-  } else if (shot === 2) {
-    // Car theft on the Neon Strip at night — player beside a car, E prompt.
-    G.timeOfDay = 0.75;
-    P.pos.set(6, 0, 6);
-    P.heading = Math.PI / 2;
-    P.camYaw = Math.PI / 2;
-    P.onFoot = true;
-    P.wanted = 0;
-    G.missions.index = 0;
-    G.missions.step = 0;
-    G.missions.active = true;
-    G.hud.setObjective('FIRST WHEELS', 'Steal a car — walk up to a parked car and press E', 'Mission 1/8 · Reward $500');
-    const car = G.parkedCars.find((c) => c.type === 'sport') || G.parkedCars[0];
-    car.x = 10; car.z = 6; car.heading = Math.PI / 2;
-    car.mesh.position.set(10, 0, 6);
-    car.mesh.rotation.y = Math.PI / 2;
-    G._shotStealCar = car;
   } else if (shot === 3) {
-    // Mission in progress — Mara's recon at the Solmar Star yacht, dusk.
-    G.timeOfDay = 0.5;
-    P.pos.set(278, 0, -138);
-    P.heading = Math.PI / 2 + 0.5;
-    P.camYaw = Math.PI / 2 + 0.5;
-    P.onFoot = true;
+    // RACE START: staged on the Strip Dash start line, engine off, two
+    // rival cars gridded ahead on the green start pad.
+    G.timeOfDay = 0.48;
+    const car = placeCarAt(-174, 120, Math.PI / 2, 'sport');
+    car.speed = 0;
     P.wanted = 0;
-    G.missions.index = 4;
+    P.money = 2600;
+    G.missions.index = 0;
     G.missions.step = 1;
     G.missions.active = true;
-    G.hud.setObjective('CASINO RECON', 'Scan the vault door — hold E', 'Mission 5/8 · Reward $4,000');
-    G.hud.say('MARA VOSS', '"The Solmar Star. Get on board, scan the vault door, get out."');
-    G._shotGuards = [{ x: 284, z: -130 }, { x: 282, z: -166 }];
+    G.hud.setObjective('STRIP DASH', 'Street race — beat the pack to the Playa', 'Side event · Prize $1,500');
+    G._shotRaceGrid = 'strip-dash';
   } else if (shot === 4) {
-    // On foot in the Marina by day — pedestrians, traffic, the tower.
-    G.timeOfDay = 0.3;
-    P.pos.set(180, 0, -120);
-    P.heading = Math.PI;
-    P.camYaw = Math.PI;
-    P.onFoot = true;
+    // GARAGE: parked up facing the Docks garage, cyan beacon + signs,
+    // upgrade prompt up — ENGINE 1 / NITRO 2 fitted for the speedo readout.
+    G.timeOfDay = 0.45;
+    const car = placeCarAt(176, 134, -Math.PI / 2, 'sport');
+    car.speed = 0;
     P.wanted = 0;
-    G.missions.index = 0;
+    P.money = 5000;
+    G.missions.index = 1;
     G.missions.step = 0;
     G.missions.active = true;
-    G.hud.setObjective('FIRST WHEELS', 'Steal a car — walk up to a parked car and press E', 'Mission 1/8 · Reward $500');
+    G.hud.setObjective('DOCKS GARAGE', 'Fit ENGINE, ARMOR and NITRO — upgrades are permanent', 'Side system · Docks');
+    G._shotGarage = true;
   }
 
   G.state = 'playing';

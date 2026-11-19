@@ -26,6 +26,12 @@ export function createInput() {
     mouse.dy += e.movementY || 0;
     mouse.x = e.clientX; mouse.y = e.clientY;
   });
+  // Mouse wheel steps accumulate here; main.js reads them once per frame
+  // to cycle the weapon wheel (v8).
+  let wheelSteps = 0;
+  window.addEventListener('wheel', (e) => {
+    wheelSteps += Math.sign(e.deltaY);
+  }, { passive: true });
 
   return {
     keys, mouse,
@@ -40,6 +46,8 @@ export function createInput() {
       if (keys.has('KeyD') || keys.has('ArrowRight')) x += 1;
       return { x, z };
     },
+    // Consume the accumulated mouse-wheel steps (weapon cycling).
+    takeWheel() { const w = wheelSteps; wheelSteps = 0; return w; },
     endFrame() { pressed.clear(); mouse.dx = 0; mouse.dy = 0; mouse.clicked = false; },
     get pointerLocked() { return locked; },
     set pointerLocked(v) { locked = v; },

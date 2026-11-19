@@ -167,5 +167,10 @@ export function createAudio() {
     },
     wantedUp() { if (ensure()) { tone(880, 0.12, 'square', 0.1); tone(880, 0.12, 'square', 0.1, 0.16); } },
     click() { if (ensure()) tone(1200, 0.05, 'square', 0.08); },
+    // v8: garage till + race cues.
+    purchase() { if (ensure()) { tone(880, 0.08, 'square', 0.12); tone(1318, 0.16, 'square', 0.12, 0.08); } },
+    denied() { if (ensure()) { tone(196, 0.16, 'square', 0.14); tone(147, 0.2, 'square', 0.14, 0.12); } },
+    countdownBeep(final) { if (ensure()) tone(final ? 1320 : 660, final ? 0.3 : 0.12, 'square', 0.14); },
+    weaponSwitch() { if (ensure()) { noise(0.05, 0.2, 2400); tone(520, 0.05, 'square', 0.08, 0.02); } },
   };
 }

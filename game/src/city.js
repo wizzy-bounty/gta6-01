@@ -306,6 +306,47 @@ export function buildCity(scene) {
   group.add(safe);
   colliders.push({ minX: -158, maxX: -142, minZ: -156, maxZ: -144 });
 
+  // The Docks garage (v8): a low workshop on the corner by the x=180 road,
+  // clear of both roads, with a cyan GARAGE sign. Upgrades are bought here.
+  const garage = new THREE.Group();
+  garage.position.set(166, 0, 134);
+  const garageBody = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x5a6a76 }));
+  garageBody.scale.set(14, 6, 12); garageBody.position.y = 3;
+  garage.add(garageBody);
+  const garageDoor = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x22262e }));
+  garageDoor.scale.set(8, 4.4, 0.6); garageDoor.position.set(0, 2.2, 6.2);
+  garage.add(garageDoor);
+  const garageDoorE = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x22262e }));
+  garageDoorE.scale.set(0.6, 4.4, 7); garageDoorE.position.set(7.2, 2.2, 0);
+  garage.add(garageDoorE);
+  const garageSignMat = new THREE.MeshBasicMaterial({ color: 0x2ad4ff });
+  neonMats.push(garageSignMat);
+  const garageSign = new THREE.Mesh(new THREE.BoxGeometry(10, 1.6, 0.4), garageSignMat);
+  garageSign.position.set(0, 7, 6.2);
+  garage.add(garageSign);
+  const garageSignW = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.6, 8), garageSignMat);
+  garageSignW.position.set(7.2, 7, 0);
+  garage.add(garageSignW);
+  group.add(garage);
+  colliders.push({ minX: 159, maxX: 173, minZ: 128, maxZ: 140 });
+
+  // Street-race start pads (v8): flat chequered pads on the road at the two
+  // race starts — Marina Loop (234,-60) and Strip Dash (-174,120).
+  const padMat = new THREE.MeshLambertMaterial({ color: 0x1d7a3a });
+  const padTrim = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  for (const [px, pz] of [[240, -60], [-174, 120]]) {
+    const pad = new THREE.Mesh(new THREE.PlaneGeometry(11, 11), padMat);
+    pad.rotation.x = -Math.PI / 2;
+    pad.position.set(px, 0.09, pz);
+    group.add(pad);
+    for (let i = 0; i < 4; i++) {
+      const sq = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.4), padTrim);
+      sq.rotation.x = -Math.PI / 2;
+      sq.position.set(px - 2.1 + i * 1.4, 0.1, pz - 4.6);
+      group.add(sq);
+    }
+  }
+
   // Palm trees along the Marina + beach.
   const trunkMat = new THREE.MeshLambertMaterial({ color: 0x8a6a3a });
   const leafMat = new THREE.MeshLambertMaterial({ color: 0x2a8a4a });
@@ -377,6 +418,7 @@ export function buildCity(scene) {
       docksYard: new THREE.Vector3(180, 0, 180),
       strip: new THREE.Vector3(0, 0, 0),
       marinaWalk: new THREE.Vector3(150, 0, -150),
+      garage: new THREE.Vector3(166, 0, 134),
     },
     bounds: { minX: -280, maxX: 360, minZ: -280, maxZ: 330 },
   };

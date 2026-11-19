@@ -42,6 +42,54 @@
     background:rgba(5,10,25,.62);padding:8px 12px;border-radius:6px;
     border:1px solid rgba(255,255,255,.25);text-shadow:0 1px 3px #000}
   #radio .st{color:#ff7ad9}
+  /* ---------- v8 panels ---------- */
+  #weaponPanel{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+    display:flex;gap:8px}
+  #weaponPanel .wslot{background:rgba(5,10,25,.66);border:2px solid rgba(255,255,255,.35);
+    border-radius:8px;padding:7px 12px;font-size:13px;font-weight:800;letter-spacing:.5px;
+    color:#dfe9ff;text-shadow:0 1px 3px #000}
+  #weaponPanel .wslot .wkey{background:#ffd23f;color:#111;border-radius:4px;
+    padding:0 6px;margin-right:7px}
+  #weaponPanel .wslot.active{border-color:#ffd23f;color:#ffd23f;
+    box-shadow:0 0 12px rgba(255,210,63,.45)}
+  #weaponPanel .wslot.locked{opacity:.45}
+  #respectPanel{position:absolute;left:16px;bottom:64px;font-size:13px;line-height:1.5;
+    background:rgba(5,10,25,.62);padding:8px 12px;border-radius:6px;
+    border:1px solid rgba(255,255,255,.25);text-shadow:0 1px 3px #000;min-width:230px}
+  #respectPanel .rlabel{color:#9fd8ff;font-size:11px;letter-spacing:1px}
+  #respectPanel .rbar{display:block;height:7px;background:rgba(255,255,255,.18);
+    border-radius:4px;margin-top:3px;overflow:hidden}
+  #respectPanel .rbar span{display:block;height:100%;background:#ff7ad9}
+  #raceInfo{position:absolute;left:50%;top:16px;transform:translateX(-50%);
+    background:rgba(5,25,10,.72);border:2px solid #2aff5a;border-radius:8px;
+    padding:8px 18px;font-size:16px;letter-spacing:.5px;text-shadow:0 1px 3px #000}
+  #wheel{position:absolute;left:50%;top:50%;width:300px;height:300px;
+    transform:translate(-50%,-50%);pointer-events:none}
+  #wheel .wseg{position:absolute;width:128px;text-align:center;font-weight:900;
+    font-size:16px;letter-spacing:1px;background:rgba(5,10,25,.8);
+    border:2px solid rgba(255,255,255,.5);border-radius:10px;padding:12px 4px;
+    text-shadow:0 1px 3px #000}
+  #wheel .wseg span{display:block;font-size:12px;color:#ffd23f}
+  #wheel .wseg.s0{left:86px;top:0}
+  #wheel .wseg.s1{left:0;bottom:26px}
+  #wheel .wseg.s2{right:0;bottom:26px}
+  #wheel .wseg.active{border-color:#ffd23f;color:#ffd23f}
+  #wheel .wseg.locked{opacity:.45}
+  #garagePanel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:min(430px,90vw);background:rgba(4,14,22,.94);border:2px solid #2ad4ff;
+    border-radius:12px;padding:18px 20px;pointer-events:auto;z-index:8;
+    box-shadow:0 10px 40px rgba(0,0,0,.8)}
+  #garagePanel h3{margin:0 0 2px;color:#2ad4ff;letter-spacing:1px;font-size:19px}
+  #garagePanel .gcash{color:#7dff9b;font-weight:800;margin-bottom:10px}
+  #garagePanel .grow{border-top:1px solid rgba(255,255,255,.16);padding:9px 0}
+  #garagePanel .gname{font-weight:800;font-size:15px;letter-spacing:.5px}
+  #garagePanel .gpips{color:#2ad4ff;letter-spacing:2px;font-size:12px}
+  #garagePanel .gblurb{font-size:12.5px;color:#bcd0ff;margin:2px 0 6px}
+  #garagePanel .gbuy{cursor:pointer;background:#2ad4ff;color:#04222e;border:none;
+    border-radius:6px;font-weight:800;padding:7px 14px;font-size:13.5px}
+  #garagePanel .gbuy:hover{filter:brightness(1.15)}
+  #garagePanel .gmax{color:#7dff9b;font-weight:800;font-size:13px}
+  #garagePanel .gfoot{margin-top:10px;font-size:12px;color:#8fa3c8}
   #prompt{position:absolute;left:50%;bottom:23%;transform:translateX(-50%);
     font-size:19px;font-weight:800;background:rgba(5,10,25,.72);padding:10px 18px;
     border-radius:8px;border:2px solid #ffd23f;text-shadow:0 1px 3px #000}
@@ -102,11 +150,16 @@
     <div id="healthbar"><div id="healthfill"></div></div>
     <div id="clock">08:00 · MARINA</div>
   </div>
+  <div id="raceInfo" class="hidden"></div>
   <div id="minimapWrap"><canvas id="minimap" width="230" height="230"></canvas></div>
   <div id="speedo" class="hidden"><div class="spd"><span id="speedVal">0</span></div>
     <div class="lbl">KM/H · <span id="carName">SEDAN</span></div></div>
   <div id="radio">♪ <span class="st" id="radioStation">SOLMAR FM 92.1</span>
     <span style="color:#9fb4d8">· R = station · M = mute</span></div>
+  <div id="respectPanel"></div>
+  <div id="weaponPanel"></div>
+  <div id="wheel" class="hidden"></div>
+  <div id="garagePanel" class="hidden"></div>
   <div id="prompt" class="hidden"></div>
   <div id="dialog" class="hidden"></div>
   <div id="banner" class="hidden"></div>
@@ -118,12 +171,13 @@
   <h1>SOLMAR <span>HEAT</span></h1>
   <h2>Solmar City. Five districts, one last job. You are Riko “Vex” Marlowe —
   getaway driver, fresh out of prison. Mara Voss has eight jobs for you,
-  ending on the Solmar Star casino yacht. Steal cars, lose the cops, get paid.</h2>
+  ending on the Solmar Star casino yacht. Steal cars, outrun the roadblocks,
+  win the street races, earn the city's respect — and get paid.</h2>
   <div><button class="btn" id="btnStart">▶ &nbsp;START THE JOB</button>
   <button class="btn ghost hidden" id="btnContinue">CONTINUE — <span id="contInfo"></span></button></div>
-  <div class="keys"><b>WASD</b> move / drive &nbsp;·&nbsp; <b>E</b> steal car &amp; interact
-  &nbsp;·&nbsp; <b>F</b> punch &nbsp;·&nbsp; <b>Click</b> shoot &nbsp;·&nbsp; <b>R</b> radio
-  &nbsp;·&nbsp; <b>Shift</b> sprint &nbsp;·&nbsp; <b>P</b> pause</div>
+  <div class="keys"><b>WASD</b> move / drive &nbsp;·&nbsp; <b>E</b> steal car, garage &amp; interact
+  &nbsp;·&nbsp; <b>Q + 1/2/3</b> weapon wheel &nbsp;·&nbsp; <b>F</b> punch &nbsp;·&nbsp; <b>Click</b> shoot
+  &nbsp;·&nbsp; <b>Shift</b> sprint / nitro &nbsp;·&nbsp; <b>R</b> radio &nbsp;·&nbsp; <b>P</b> pause</div>
   <div class="foot">An original game. Solmar City, its people and its story are invented —
   nothing from any commercial game. Runs offline, no network. MIT licensed.</div>
 </div>

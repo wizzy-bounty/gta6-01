@@ -49,11 +49,12 @@ function pickCorner(rng) {
   return { x: gx + (rng() < 0.5 ? -9 : 9), z: gz + (rng() < 0.5 ? -9 : 9) };
 }
 
-export function updatePedestrians(peds, dt, playerPos, playerSpeed, rng) {
+export function updatePedestrians(peds, dt, playerPos, playerSpeed, rng, playerWanted = 0) {
   for (const p of peds) {
-    // Flee a fast car that comes close.
+    // Flee a fast car that comes close — or the sirens at wanted 3+ (v8):
+    // crowds clear the street when a real chase rolls through.
     const pd = playerPos ? Math.hypot(playerPos.x - p.x, playerPos.z - p.z) : 999;
-    if (playerSpeed > 8 && pd < 12) {
+    if ((playerSpeed > 8 && pd < 12) || (playerWanted >= 3 && pd < 15)) {
       p.fleeing = true;
       p.heading = Math.atan2(p.x - playerPos.x, p.z - playerPos.z);
       p.speed = 5.5;

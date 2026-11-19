@@ -1,6 +1,14 @@
-// Combat: armed guards with simple AI (approach, shoot, take damage) and the
-// player's punch (F) and hitscan shooting (mouse click) with a tracer line.
+// Combat (v8): armed guards with simple AI (approach, shoot, take damage)
+// and the player's fighting through the weapon wheel — F punches with the
+// fists, the mouse fires the selected gun. The pistol fires per click; the
+// SMG is full-auto while the button is held, with wider spread and lower
+// damage per round. Damage, cadence and spread all come from weapons.js.
+// Guard takedowns pay cash and earn respect in the district (via the
+// G.awardRespect hook wired in main.js).
 import * as THREE from 'three';
+import { weaponDef } from './weapons.js';
+import { districtAt } from './city.js';
+import { armorFactor } from './garage.js';
 
 export function createCombat(scene) {
   return { scene, enemies: [], tracers: [], punchCd: 0, shootCd: 0 };
@@ -57,6 +65,7 @@ export function updateCombat(combat, G, dt) {
   combat.punchCd = Math.max(0, combat.punchCd - dt);
   combat.shootCd = Math.max(0, combat.shootCd - dt);
   const p = G.player.pos;
+  const weapon = G.weapons ? weaponDef(G.weapons) : { melee: true, damage: 34, cooldown: 0.45 };
 
   // Tracers fade out.
   for (let i = combat.tracers.length - 1; i >= 0; i--) {
@@ -65,9 +74,9 @@ export function updateCombat(combat, G, dt) {
     if (t.life <= 0) { combat.scene.remove(t.line); combat.tracers.splice(i, 1); }
   }
 
-  // Player punch: F, short range, in front.
+  // Player punch: F, short range, in front — the fists slot of the wheel.
   if (G.input.wasPressed('KeyF') && combat.punchCd <= 0 && G.player.onFoot) {
-    combat.punchCd = 0.45;
+    combat.punchCd = weapon.cooldown || 0.45;
     G.audio.punch();
     const fx = Math.sin(G.player.heading), fz = Math.cos(G.player.heading);
     for (const e of [...combat.enemies]) {
@@ -79,9 +88,12 @@ export function updateCombat(combat, G, dt) {
     }
   }
 
-  // Player shoot: mouse click, hitscan toward the camera aim point.
-  if (G.input.mouse.clicked && combat.shootCd <= 0 && G.player.onFoot) {
-    combat.shootCd = 0.28;
+  // Player shoot: the selected gun. Pistol = one shot per click; SMG =
+  // full-auto while held. Hitscan toward the camera aim point, with the
+  // weapon's spread as the hit tolerance around the ray.
+  const wantsFire = weapon.auto ? G.input.mouse.down : G.input.mouse.clicked;
+  if (!weapon.melee && wantsFire && combat.shootCd <= 0 && G.player.onFoot) {
+    combat.shootCd = weapon.cooldown;
     G.audio.shot();
     if (G.player.wanted < 2 && G.combat.enemies.length > 0) {
       // Firing near guards is a crime.
@@ -91,24 +103,25 @@ export function updateCombat(combat, G, dt) {
     const origin = new THREE.Vector3(p.x, 1.6, p.z);
     const dir = new THREE.Vector3();
     G.camera.getWorldDirection(dir);
-    const end = origin.clone().add(dir.clone().multiplyScalar(90));
-    let best = null, bd = 90;
+    const end = origin.clone().add(dir.clone().multiplyScalar(weapon.range));
+    let best = null, bd = weapon.range;
     for (const e of combat.enemies) {
       // Distance from the enemy centre to the shot ray.
       const toE = new THREE.Vector3(e.x - origin.x, 1.4 - origin.y, e.z - origin.z);
       const along = toE.dot(dir);
-      if (along < 0 || along > 90) continue;
+      if (along < 0 || along > weapon.range) continue;
       const perp = toE.clone().add(dir.clone().multiplyScalar(-along));
-      if (perp.length() < 2.2 && along < bd) { bd = along; best = e; }
+      if (perp.length() < weapon.spread && along < bd) { bd = along; best = e; }
     }
     if (best) {
       end.copy(origin).add(dir.clone().multiplyScalar(bd));
-      damageEnemy(combat, G, best, 50);
+      damageEnemy(combat, G, best, weapon.damage);
     }
     addTracer(combat, origin, end);
   }
 
-  // Enemy AI: walk toward the player, shoot when in range.
+  // Enemy AI: walk toward the player, shoot when in range. A player in a
+  // car with armor fitted takes reduced damage.
   for (const e of [...combat.enemies]) {
     const dx = p.x - e.x, dz = p.z - e.z;
     const d = Math.hypot(dx, dz);
@@ -126,7 +139,8 @@ export function updateCombat(combat, G, dt) {
       G.audio.enemyShot();
       const hitChance = d < 12 ? 0.45 : d < 22 ? 0.28 : 0.14;
       if (Math.random() < hitChance) {
-        G.player.health -= 8 + Math.random() * 7;
+        const factor = G.player.onFoot ? 1 : armorFactor(G.player.car);
+        G.player.health -= (8 + Math.random() * 7) * factor;
         G.hud.flashDamage();
         G.audio.crash(0.2);
       }
@@ -150,5 +164,8 @@ function damageEnemy(combat, G, e, dmg) {
     G.player.money += 150;
     G.hud.toast('Guard down — +$150');
     G.audio.pickup();
+    if (G.awardRespect) {
+      G.awardRespect(districtAt(e.x, e.z), 10, 'a guard takedown');
+    }
   }
 }

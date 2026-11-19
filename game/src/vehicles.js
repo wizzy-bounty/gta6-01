@@ -50,6 +50,14 @@ export function createCarMesh(type) {
     sign.position.set(0, 1.8, -0.3);
     g.add(sign);
   }
+  // Nitro exhaust flame (v8 garage): hidden until the car's nitro fires.
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.34, 1.9, 8),
+    new THREE.MeshBasicMaterial({ color: 0x53c8ff, transparent: true, opacity: 0.85 }));
+  flame.rotation.x = -Math.PI / 2;
+  flame.position.set(0, 0.55, -3.2);
+  flame.visible = false;
+  g.add(flame);
+  g.userData.flame = flame;
   g.userData.wheels = wheels;
   g.userData.type = type;
   return g;
@@ -61,6 +69,10 @@ export function makeCarState(mesh, x, z, heading, type) {
     speed: 0, steer: 0,
     topSpeed: CAR_TYPES[type].top,
     accel: CAR_TYPES[type].accel,
+    // Garage (v8) fits upgrades against these base figures.
+    baseTop: CAR_TYPES[type].top,
+    baseAccel: CAR_TYPES[type].accel,
+    armorLevel: 0, nitroLevel: 0, nitroOn: false,
     name: CAR_TYPES[type].name,
     parked: true, stolen: false,
   };
@@ -86,6 +98,12 @@ export function driveCar(car, input, dt) {
   car.z += Math.cos(car.heading) * car.speed * dt;
   car.mesh.position.set(car.x, 0, car.z);
   car.mesh.rotation.y = car.heading;
+  // Nitro flame flickers while the boost is firing.
+  const flame = car.mesh.userData.flame;
+  if (flame) {
+    flame.visible = !!car.nitroOn && car.speed > 4;
+    if (flame.visible) flame.scale.set(1, 0.8 + Math.random() * 0.5, 1);
+  }
   const spin = car.speed * dt / 0.42;
   for (const w of car.mesh.userData.wheels) w.rotation.x += spin;
   const frontL = car.mesh.userData.wheels[0], frontR = car.mesh.userData.wheels[1];

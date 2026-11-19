@@ -3,6 +3,7 @@
 // game/ on http://localhost:8080. It sends the MIME types a browser game
 // needs, refuses any path outside game/, and otherwise does nothing clever:
 // this is a development convenience, not a web server for the internet.
+// (SOLMAR HEAT v8 — also used to stage the ?shot=N screenshots locally.)
 import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';

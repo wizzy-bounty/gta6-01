@@ -1,10 +1,12 @@
-// SOLMAR HEAT — gta6-01 entry program (Node 22, standard library only).
+// SOLMAR HEAT v8 — gta6-01 entry program (Node 22, standard library only).
 // Written for this entry: it copies the playable game/ folder and the
 // screenshots/ folder from beside this file into /output (or
 // MAKEFUN_OUTPUT_DIR) and writes /output/dossier.json with the vendored
 // make.fun library, so the sealed gate can check the entry byte for byte.
 // The game itself is plain static files under game/ — no build step, no
 // network at play time — and three.js is vendored as game/vendor/*.min.js.
+// v8 adds the weapon wheel, police roadblocks, garage upgrades, respect
+// ranks + district standing and street races on top of the v7c game.
 //
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 

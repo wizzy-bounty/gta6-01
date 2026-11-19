@@ -4,10 +4,11 @@
 // target, updates the HUD objective, pays the reward and advances the chain.
 import * as THREE from 'three';
 import { spawnEnemies, clearEnemies } from './combat.js';
+import { rankOf, standingOf } from './respect.js';
 
 export const MISSIONS = [
   {
-    id: 1, title: 'FIRST WHEELS', reward: 500,
+    id: 1, title: 'FIRST WHEELS', reward: 500, district: 'Neon Strip',
     briefing: '"Vex. You\'re out. I need wheels and I need you. Steal a car — any car — then come find me on the Strip."',
     steps: [
       { kind: 'steal', text: 'Steal a car — walk up to a parked car and press E' },
@@ -15,7 +16,7 @@ export const MISSIONS = [
     ],
   },
   {
-    id: 2, title: 'DOCKS RUN', reward: 1200,
+    id: 2, title: 'DOCKS RUN', reward: 1200, district: 'Docks',
     briefing: '"First job is simple. A package is waiting at the Docks. Bring it back to me — no cops, no noise."',
     steps: [
       { kind: 'hold', x: 180, z: 180, r: 6, hold: 2, text: 'Pick up the package at the Docks — hold E' },
@@ -23,7 +24,7 @@ export const MISSIONS = [
     ],
   },
   {
-    id: 3, title: 'CONTAINER HEIST', reward: 3500,
+    id: 3, title: 'CONTAINER HEIST', reward: 3500, district: 'Docks',
     briefing: '"The yard crew leaves a container unguarded at dawn. Grab the crate inside, then vanish. This one will be loud."',
     steps: [
       { kind: 'hold', x: 130, z: 210, r: 6, hold: 3, text: 'Crack the container — hold E (this will raise the heat)', loud: true },
@@ -31,7 +32,7 @@ export const MISSIONS = [
     ],
   },
   {
-    id: 4, title: 'GETAWAY DRIVER', reward: 2000,
+    id: 4, title: 'GETAWAY DRIVER', reward: 2000, district: 'Old Town',
     briefing: '"You\'re hot, Vex. Cool off. When the stars are gone, bring the car to the safehouse in Old Town."',
     steps: [
       { kind: 'cooldown', text: 'Lose the wanted level — hide until the stars clear' },
@@ -39,7 +40,7 @@ export const MISSIONS = [
     ],
   },
   {
-    id: 5, title: 'CASINO RECON', reward: 4000,
+    id: 5, title: 'CASINO RECON', reward: 4000, district: 'Marina',
     briefing: '"The Solmar Star. The yacht casino. I need eyes on it before the big night — get on board, scan the vault door, get out. Guards patrol the pier."',
     steps: [
       { kind: 'reach', x: 288, z: -150, r: 7, text: 'Get to the Solmar Star yacht in the Marina (on foot)' },
@@ -47,7 +48,7 @@ export const MISSIONS = [
     ],
   },
   {
-    id: 6, title: 'THE INSIDE MAN', reward: 6000,
+    id: 6, title: 'THE INSIDE MAN', reward: 6000, district: 'Old Town',
     briefing: '"I\'m riding with you tonight. Pick me up, then take me to the Old Town fixer. His crew is not friendly — be ready."',
     steps: [
       { kind: 'reach', x: 6, z: 6, r: 6, text: 'Pick up Mara on the Strip' },
@@ -57,7 +58,7 @@ export const MISSIONS = [
     ],
   },
   {
-    id: 7, title: 'HEAT RISING', reward: 8000,
+    id: 7, title: 'HEAT RISING', reward: 8000, district: 'Airfield & Playa',
     briefing: '"The whole city is looking for us now. Four stars, a helicopter — survive sixty seconds, then run for the airfield."',
     steps: [
       { kind: 'survive', seconds: 60, wanted: 4, text: 'Survive 60 seconds at 4 stars — the helicopter is up' },
@@ -65,7 +66,7 @@ export const MISSIONS = [
     ],
   },
   {
-    id: 8, title: 'THE SOLMAR JOB', reward: 50000,
+    id: 8, title: 'THE SOLMAR JOB', reward: 50000, district: 'Marina',
     briefing: '"Tonight. The Solmar Star. We walk on, we take the vault, we walk off rich. This is the one, Vex — make it count."',
     steps: [
       { kind: 'reach', x: 288, z: -150, r: 7, text: 'Board the Solmar Star one last time' },
@@ -110,6 +111,26 @@ export function currentStep(missions) {
   return m.steps[Math.min(missions.step, m.steps.length - 1)];
 }
 
+// Objective sub-line with the v8 respect context: your rank, and your
+// standing in the district this mission runs in.
+function objectiveSub(G, m, index) {
+  let sub = `Mission ${index + 1}/8 · Reward $${m.reward.toLocaleString('en-US')}`;
+  if (G.respect) {
+    sub += ` · Respect: ${rankOf(G.respect.total).name}`;
+    if (m.district) sub += ` · ${m.district} standing ${standingOf(G.respect, m.district)}%`;
+  }
+  return sub;
+}
+
+// Mara's briefing, with a standing flavour line when the mission's
+// district already vouches for you (standing 50+ = faster wanted cooldown).
+function briefingFor(G, m) {
+  if (G.respect && m.district && standingOf(G.respect, m.district) >= 50) {
+    return m.briefing + ` "And Vex — ${m.district} is ours now. The block covers for you there; the heat cools faster."`;
+  }
+  return m.briefing;
+}
+
 export function startMission(G, index) {
   const ms = G.missions;
   ms.index = index;
@@ -120,8 +141,8 @@ export function startMission(G, index) {
   ms.done = false;
   ms.guardsSpawned = false;
   const m = MISSIONS[index];
-  G.hud.setObjective(m.title, m.steps[0].text, `Mission ${index + 1}/8 · Reward $${m.reward.toLocaleString('en-US')}`);
-  G.hud.say('MARA VOSS', m.briefing);
+  G.hud.setObjective(m.title, m.steps[0].text, objectiveSub(G, m, index));
+  G.hud.say('MARA VOSS', briefingFor(G, m));
   G.audio.pickup();
 }
 
@@ -137,7 +158,7 @@ function advanceStep(G) {
     return;
   }
   const s = m.steps[ms.step];
-  G.hud.setObjective(m.title, s.text, `Mission ${ms.index + 1}/8 · Reward $${m.reward.toLocaleString('en-US')}`);
+  G.hud.setObjective(m.title, s.text, objectiveSub(G, m, ms.index));
   G.audio.pickup();
   if (s.kind === 'survive' && s.wanted) {
     G.player.wanted = Math.max(G.player.wanted, s.wanted);
@@ -152,6 +173,8 @@ function completeMission(G) {
   G.player.money += m.reward;
   G.hud.banner(`MISSION COMPLETE`, `+ $${m.reward.toLocaleString('en-US')} — ${m.title}`);
   G.audio.missionComplete();
+  // v8: a finished job earns respect in the district it ran in.
+  if (G.awardRespect) G.awardRespect(m.district, 60, `the ${m.title} job`);
   ms.beacon.visible = false;
   if (ms.index >= MISSIONS.length - 1) {
     ms.done = true;
@@ -166,8 +189,8 @@ function completeMission(G) {
   ms.surviveT = 0;
   ms.guardsSpawned = false;
   const next = MISSIONS[ms.index];
-  G.hud.setObjective(next.title, next.steps[0].text, `Mission ${ms.index + 1}/8 · Reward $${next.reward.toLocaleString('en-US')}`);
-  setTimeout(() => G.hud.say('MARA VOSS', next.briefing), 1800);
+  G.hud.setObjective(next.title, next.steps[0].text, objectiveSub(G, next, ms.index));
+  setTimeout(() => G.hud.say('MARA VOSS', briefingFor(G, next)), 1800);
 }
 
 function failMission(G, reason) {
@@ -179,7 +202,7 @@ function failMission(G, reason) {
   ms.surviveT = 0;
   ms.guardsSpawned = false;
   const m = currentMission(ms);
-  G.hud.setObjective(m.title, m.steps[0].text, `Mission ${ms.index + 1}/8 · Reward $${m.reward.toLocaleString('en-US')}`);
+  G.hud.setObjective(m.title, m.steps[0].text, objectiveSub(G, m, ms.index));
   G.hud.say('MARA VOSS', '"Again. From the top — ' + m.title + '."');
 }
 
@@ -270,6 +293,7 @@ export function updateMissions(G, dt) {
     G.player.heading = 0;
     if (G.player.car) { G.player.car.parked = true; G.player.car = null; G.player.onFoot = true; }
     clearEnemies(G.combat);
+    if (G.onPlayerDeath) G.onPlayerDeath();
     failMission(G, 'You were taken down — Mara patched you up at the safehouse.');
   }
 }

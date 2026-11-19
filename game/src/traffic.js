@@ -47,7 +47,7 @@ function lightIsRed(lights, x, z, axis) {
   return false;
 }
 
-export function updateTraffic(traffic, city, dt, playerPos, parkedCars = []) {
+export function updateTraffic(traffic, city, dt, playerPos, parkedCars = [], roadblocks = []) {
   const { cars } = traffic;
   for (const car of cars) {
     // Slow for the car ahead on the same road.
@@ -83,6 +83,14 @@ export function updateTraffic(traffic, city, dt, playerPos, parkedCars = []) {
     if (playerPos) {
       const d = Math.hypot(playerPos.x - car.x, playerPos.z - car.z);
       if (d < 9) target = Math.min(target, 0);
+    }
+    // Queue up behind a police roadblock instead of piling into it (v8).
+    for (const block of roadblocks) {
+      const ahead = car.horizontal
+        ? (block.x - car.x) * car.dir
+        : (block.z - car.z) * car.dir;
+      const cross = car.horizontal ? Math.abs(block.z - car.z) : Math.abs(block.x - car.x);
+      if (ahead > 0 && ahead < 15 && cross < 6) target = Math.min(target, 0);
     }
     car.speed += (target - car.speed) * Math.min(1, dt * 1.6);
     const step = car.speed * dt;

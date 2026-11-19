@@ -1,6 +1,9 @@
-// SOLMAR HEAT — main loop + state. Wires city, vehicles, traffic, peds,
+// SOLMAR HEAT v8 — main loop + state. Wires city, vehicles, traffic, peds,
 // police, missions, combat, HUD, audio and save together: third-person on
-// foot, arcade driving with a chase camera, wanted + helicopter, day/night.
+// foot, arcade driving with a chase camera, wanted + helicopter — plus the
+// v8 systems: the weapon wheel (weapons.js), respect ranks + district
+// standing (respect.js), the Docks garage upgrades with nitro (garage.js)
+// and street races against AI drivers (races.js).
 import * as THREE from 'three';
 import { buildCity, collideCircle, districtAt } from './city.js';
 import { createCarMesh, driveCar, spawnParkedCars, nearestParkedCar } from './vehicles.js';
@@ -14,6 +17,10 @@ import { createAudio } from './audio.js';
 import { createInput } from './input.js';
 import { loadSave, writeSave, clearSave, describeSave } from './save.js';
 import { applyShotMode } from './shots.js';
+import { createWeapons, selectWeapon, cycleWeapon, unlockSmg } from './weapons.js';
+import { createRespect, addRespect, rankOf, cooldownFactor, SMG_RANK } from './respect.js';
+import { createGarage, nearGarage, applyUpgrades, buyUpgrade, buySmg, GARAGE_POS } from './garage.js';
+import { createRaces, updateRaces, startRace, cancelRace, raceAtStart, stageRaceGrid } from './races.js';
 
 const app = document.getElementById('app');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -39,10 +46,11 @@ scene.add(hemi);
 // ---- shared game state ----
 const G = {
   scene, camera, renderer,
-  time: 0, timeOfDay: 0.32, // 0..1, starts mid-morning
-  state: 'menu', // menu | playing | paused | complete
+  time: 0, timeOfDay: 0.44, // 0..1, starts at golden hour (v8 default grade)
+  state: 'menu', // menu | playing | paused | garage | complete
   city: null, traffic: null, peds: null, police: null, missions: null, combat: null,
   hud: null, audio: null, input: null,
+  weapons: null, respect: null, garage: null, races: null,
   parkedCars: [],
   player: {
     pos: new THREE.Vector3(6, 0, 60),
@@ -65,6 +73,29 @@ G.combat = createCombat(scene);
 G.hud = createHud();
 G.audio = createAudio();
 G.input = createInput();
+G.weapons = createWeapons();
+G.respect = createRespect();
+G.garage = createGarage(scene);
+G.races = createRaces(scene);
+
+// ---- respect hook (missions / combat / races call this) ----
+G.awardRespect = (district, amount, why) => {
+  if (!G.respect || !amount) return;
+  const { rankUp } = addRespect(G.respect, district, amount);
+  if (rankUp) {
+    G.hud.banner('RESPECT — ' + rankUp.name, why ? `Earned from ${why}` : '');
+    G.audio.missionComplete();
+    if (rankUp.index >= SMG_RANK && unlockSmg(G.weapons)) {
+      G.hud.toast('SMG unlocked on the weapon wheel — slot 3!');
+    }
+  }
+};
+
+// Death cleanup hook (missions.js calls this on respawn).
+G.onPlayerDeath = () => {
+  cancelRace(G);
+  if (G.state === 'garage') closeGarage();
+};
 
 // ---- player character mesh ----
 const playerMesh = new THREE.Group();
@@ -116,6 +147,27 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+function applySave(save) {
+  if (save.garage) {
+    for (const id of ['engine', 'armor', 'nitro']) {
+      const v = Number(save.garage[id]);
+      if (Number.isFinite(v)) G.garage.levels[id] = Math.max(0, Math.min(3, v));
+    }
+  }
+  if (save.respect) {
+    G.respect.total = Number(save.respect.total) || 0;
+    if (save.respect.districts) {
+      for (const d of Object.keys(G.respect.districts)) {
+        const v = Number(save.respect.districts[d]);
+        if (Number.isFinite(v)) G.respect.districts[d] = v;
+      }
+    }
+  }
+  if (save.smg) G.weapons.unlocked.smg = true;
+  // A save made at REGULAR or better keeps the earned SMG.
+  if (rankOf(G.respect.total).index >= SMG_RANK) G.weapons.unlocked.smg = true;
+}
+
 function beginGame(save) {
   G.audio.unlock();
   G.hud.hideStart();
@@ -125,7 +177,8 @@ function beginGame(save) {
     G.player.heading = save.heading || Math.PI;
     G.player.money = save.money || 0;
     G.player.health = save.health || 100;
-    G.timeOfDay = save.timeOfDay ?? 0.32;
+    G.timeOfDay = save.timeOfDay ?? 0.44;
+    applySave(save);
     G.missions.index = Math.min(save.mission || 0, 7);
     G.state = 'playing';
     startMission(G, G.missions.index);
@@ -150,7 +203,7 @@ function toMenu() {
 }
 
 function setPaused(paused) {
-  if (G.state === 'complete') return;
+  if (G.state === 'complete' || G.state === 'garage') return;
   if (paused && G.state === 'playing') {
     G.state = 'paused';
     G.hud.showPause();
@@ -162,11 +215,71 @@ function setPaused(paused) {
   }
 }
 
+// ---- garage open / close / buy ----
+function openGarage() {
+  G.state = 'garage';
+  G.garage.open = true;
+  G.audio.engine(false, 0);
+  G.hud.showGarage(G, onGarageBuy);
+}
+function closeGarage() {
+  G.garage.open = false;
+  G.hud.hideGarage();
+  if (G.state === 'garage') G.state = 'playing';
+}
+function onGarageBuy(id) {
+  const res = id === 'smg' ? buySmg(G) : buyUpgrade(G, id);
+  if (res === 'ok') {
+    G.audio.purchase();
+    G.hud.toast(id === 'smg' ? 'SMG fitted — weapon wheel slot 3.' : 'Upgrade fitted. Permanent + saved at the safehouse.');
+  } else if (res === 'poor') {
+    G.audio.denied();
+    G.hud.toast('Not enough cash for that — run a job or a race.');
+  } else if (res === 'maxed') {
+    G.hud.toast('That upgrade is already at max level.');
+  } else if (res === 'owned') {
+    G.hud.toast('You already own the SMG.');
+  }
+  G.hud.showGarage(G, onGarageBuy);
+}
+
+// ---- weapon switching ----
+function trySelectWeapon(index) {
+  const def = selectWeapon(G.weapons, index);
+  if (def) {
+    G.audio.weaponSwitch();
+    G.hud.toast('Weapon: ' + def.name);
+  } else if (!G.weapons.unlocked[['fists', 'pistol', 'smg'][index]]) {
+    G.hud.toast('Locked — earn respect rank REGULAR or buy the SMG at the garage.');
+  }
+}
+function updateWeaponInput() {
+  if (G.input.wasPressed('Digit1')) trySelectWeapon(0);
+  if (G.input.wasPressed('Digit2')) trySelectWeapon(1);
+  if (G.input.wasPressed('Digit3')) trySelectWeapon(2);
+  const steps = G.input.takeWheel();
+  if (steps !== 0) {
+    const def = cycleWeapon(G.weapons, steps > 0 ? 1 : -1);
+    if (def) { G.audio.weaponSwitch(); G.hud.toast('Weapon: ' + def.name); }
+  }
+  if (G.input.isDown('KeyQ')) G.hud.showWheel(G);
+  else G.hud.hideWheel();
+}
+
 // ---- shot mode (deterministic screenshots) ----
 const shotMode = applyShotMode(G);
 if (shotMode) {
   if (G._shotPoliceSpots) for (const s of G._shotPoliceSpots) forceSpawnPolice(G.police, s.x, s.z);
   if (G._shotGuards) spawnEnemies(G.combat, G._shotGuards);
+  if (G._shotRaceGrid) stageRaceGrid(G.races, G._shotRaceGrid);
+  if (G._shotGarage) {
+    // Garage screenshot: panel stays closed so the building, beacon and
+    // prompt read in the frame; the fitted levels show on the speedo.
+    G.player.money = 5000;
+    G.garage.levels.engine = 1;
+    G.garage.levels.nitro = 2;
+    if (G.player.car) applyUpgrades(G.player.car, G.garage);
+  }
 }
 
 // ---- helpers ----
@@ -183,6 +296,7 @@ function tryEnterExitCar() {
     const car = P.car;
     car.parked = true;
     car.speed = 0;
+    car.nitroOn = false;
     P.car = null;
     P.onFoot = true;
     P.pos.set(car.x + Math.sin(car.heading + Math.PI / 2) * 2.4, 0, car.z + Math.cos(car.heading + Math.PI / 2) * 2.4);
@@ -193,6 +307,7 @@ function tryEnterExitCar() {
   const near = nearestParkedCar(G.parkedCars, P.pos.x, P.pos.z, 5.5);
   if (near) {
     near.parked = false;
+    applyUpgrades(near, G.garage);
     P.car = near;
     P.onFoot = false;
     P.pos.set(near.x, 0, near.z);
@@ -251,6 +366,16 @@ function updatePlayerInCar(dt) {
   const ax = G.input.axis();
   const beforeX = car.x, beforeZ = car.z;
   const speed = driveCar(car, { x: ax.x, z: ax.z }, dt);
+  // Nitro (v8 garage): hold Shift with a nitro kit fitted for a boost past
+  // the car's normal top speed, flames on.
+  const boosting = (G.input.isDown('ShiftLeft') || G.input.isDown('ShiftRight'))
+    && (car.nitroLevel || 0) > 0 && car.speed > 3;
+  car.nitroOn = boosting;
+  if (boosting) {
+    const cap = car.topSpeed * (1 + 0.10 * car.nitroLevel);
+    car.speed = Math.min(car.speed + (10 + 7 * car.nitroLevel) * dt, cap);
+    P.camShake = Math.max(P.camShake, 0.12);
+  }
   const hitPos = { x: car.x, z: car.z };
   if (collideCircle(hitPos, 2.3, G.city.colliders)) {
     car.x = beforeX; car.z = beforeZ;
@@ -348,7 +473,10 @@ function updateWanted(dt) {
   const P = G.player;
   if (P.wanted === 0) { P.wantedTimer = 0; return; }
   P.wantedTimer += dt;
-  const coolTime = P.litByHeli ? 34 : 20;
+  // District standing (v8): a neighbourhood that vouches for you cools the
+  // heat up to 25% faster.
+  const district = districtAt(P.pos.x, P.pos.z);
+  const coolTime = (P.litByHeli ? 34 : 20) * cooldownFactor(G.respect, district);
   if (P.wantedTimer >= coolTime) {
     P.wantedTimer = 0;
     P.wanted = Math.max(0, P.wanted - 1);
@@ -369,7 +497,10 @@ function frame() {
   const dt = Math.min(0.05, clock.getDelta());
   G.time += dt;
 
-  if (G.state === 'playing') {
+  if (G.state === 'garage') {
+    // Frozen world behind the shop panel; E / Esc leaves.
+    if (G.input.wasPressed('KeyE') || G.input.wasPressed('Escape')) closeGarage();
+  } else if (G.state === 'playing') {
     // Global keys.
     if (G.input.wasPressed('KeyP') || G.input.wasPressed('Escape')) setPaused(true);
     if (G.input.wasPressed('KeyR')) {
@@ -383,12 +514,22 @@ function frame() {
     if (G.input.wasPressed('KeyC')) {
       G.player.camDist = G.player.camDist > 9 ? 7 : 11;
     }
+    updateWeaponInput();
     if (G.input.wasPressed('KeyE')) {
       const step = currentStep(G.missions);
+      const nearGarageNow = nearGarage(G.player.pos.x, G.player.pos.z, 13);
+      const raceHere = !G.player.onFoot && G.races.phase === 'idle'
+        ? raceAtStart(G.races, G.player.pos.x, G.player.pos.z) : null;
       const nearSafe = Math.hypot(G.player.pos.x + 150, G.player.pos.z + 138) < 9;
       const nearHold = step && step.kind === 'hold' && step.x !== undefined
         && Math.hypot(G.player.pos.x - step.x, G.player.pos.z - step.z) < (step.r || 6);
-      if (G.player.onFoot && nearSafe && !nearHold) {
+      if (nearGarageNow) {
+        openGarage();
+      } else if (raceHere) {
+        const res = startRace(G, raceHere);
+        if (res === 'poor') G.hud.toast(`${raceHere.name}: entry is $${raceHere.entry} — you need more cash.`);
+        else if (res === 'ok') G.hud.toast(`${raceHere.name} — entry $${raceHere.entry}. Beat the pack!`);
+      } else if (G.player.onFoot && nearSafe && !nearHold) {
         if (writeSave(G)) G.hud.toast('Progress saved at the safehouse.');
       } else if (!nearHold) {
         tryEnterExitCar();
@@ -402,13 +543,19 @@ function frame() {
       G.player.car.speed = Math.max(G.player.car.speed, 22);
     }
 
-    updateTraffic(G.traffic, G.city, dt, G.player.pos, G.parkedCars);
-    updatePedestrians(G.peds, dt, G.player.pos, G.player.speed, Math.random);
+    updateTraffic(G.traffic, G.city, dt, G.player.pos, G.parkedCars, G.police.blocks);
+    updatePedestrians(G.peds, dt, G.player.pos, G.player.speed, Math.random, G.player.wanted);
     updatePolice(G.police, G, dt);
     updateCombat(G.combat, G, dt);
     updateMissions(G, dt);
+    updateRaces(G, dt);
     updateWanted(dt);
     updateDayNight(dt);
+    // Garage beacon spin.
+    if (G.garage.gem) {
+      G.garage.gem.rotation.y += dt * 2;
+      G.garage.gem.position.y = 9 + Math.sin(G.time * 2.2) * 0.7;
+    }
 
     // Mission target for the minimap.
     const step = currentStep(G.missions);
@@ -416,7 +563,13 @@ function frame() {
 
     // Context prompt.
     const P = G.player;
-    if (P.onFoot) {
+    const atGarage = nearGarage(P.pos.x, P.pos.z, 13);
+    const raceHere = !P.onFoot && G.races.phase === 'idle' ? raceAtStart(G.races, P.pos.x, P.pos.z) : null;
+    if (atGarage) {
+      G.hud.showPrompt('<span class="key">E</span> GARAGE — UPGRADES');
+    } else if (raceHere) {
+      G.hud.showPrompt(`<span class="key">E</span> START ${raceHere.name} — $${raceHere.entry} ENTRY`);
+    } else if (P.onFoot) {
       const near = nearestParkedCar(G.parkedCars, P.pos.x, P.pos.z, 5.5);
       const nearSafe = Math.hypot(P.pos.x + 150, P.pos.z + 138) < 9;
       const holdStep = G.missions.active && step && step.kind === 'hold'
@@ -426,9 +579,10 @@ function frame() {
       else if (nearSafe) G.hud.showPrompt('<span class="key">E</span> SAVE AT SAFEHOUSE');
       else G.hud.hidePrompt();
     } else {
-      G.hud.showPrompt('<span class="key">E</span> EXIT CAR &nbsp;·&nbsp; <span class="key">SPACE</span> BRAKE');
+      G.hud.showPrompt('<span class="key">E</span> EXIT CAR &nbsp;·&nbsp; <span class="key">SPACE</span> BRAKE'
+        + (P.car && P.car.nitroLevel ? ' &nbsp;·&nbsp; <span class="key">SHIFT</span> NITRO' : ''));
     }
-    // Shot 2: keep the steal prompt visible for the screenshot.
+    // Shot 2 (v7c legacy hook): keep the steal prompt visible if staged.
     if (G._shotStealCar) G.hud.showPrompt('<span class="key">E</span> STEAL SPORT');
 
     // Slow health regen when clean.
