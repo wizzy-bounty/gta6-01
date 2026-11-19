@@ -1,71 +1,116 @@
-// traffic.js — AI traffic cars that cruise the road grid and stop at red lights.
+// Live traffic: AI cars cruise the road grid, keep their lane, brake for the
+// car ahead and stop at red lights, then turn at intersections.
 import * as THREE from 'three';
 import { mulberry32 } from './city.js';
-import { makeCar } from './vehicles.js';
+import { createCarMesh, makeCarState } from './vehicles.js';
 
-const ROAD_COORDS = [-160, -120, -80, -40, 0, 40, 80, 120, 160];
+const ROAD_STEP = 60;
 
-export function createTraffic(scene) {
-  const rng = mulberry32(777);
+function laneFor(axis, index, dir) {
+  // Lane offset keeps right-hand traffic: +3.2 on one axis, -3.2 on the other.
+  return dir > 0 ? 3.2 : -3.2;
+}
+
+export function createTraffic(scene, count = 16) {
+  const rng = mulberry32(4242);
   const cars = [];
-  for (let i = 0; i < 16; i++) {
-    const horizontal = rng() > 0.5;
-    const road = ROAD_COORDS[Math.floor(rng() * ROAD_COORDS.length)];
-    const along = -180 + rng() * 360;
-    const dir = rng() > 0.5 ? 1 : -1;
-    const car = makeCar(scene, horizontal ? along : road + (dir > 0 ? 3 : -3), horizontal ? road + (dir > 0 ? 3 : -3) : along, horizontal ? (dir > 0 ? Math.PI / 2 : -Math.PI / 2) : (dir > 0 ? 0 : Math.PI), 'traffic', i);
+  const types = ['sedan', 'sedan', 'taxi', 'truck', 'sedan', 'sport'];
+  for (let i = 0; i < count; i++) {
+    const type = types[Math.floor(rng() * types.length)];
+    const mesh = createCarMesh(type);
+    scene.add(mesh);
+    const horizontal = rng() < 0.5;
+    const road = -240 + Math.floor(rng() * 9) * ROAD_STEP;
+    const along = -260 + rng() * 520;
+    const dir = rng() < 0.5 ? 1 : -1;
+    const car = makeCarState(mesh, 0, 0, 0, type);
     car.parked = false;
     car.horizontal = horizontal;
     car.road = road;
     car.dir = dir;
-    car.cruiseSpeed = 9 + rng() * 5;
-    car.speed = car.cruiseSpeed;
+    car.cruise = 9 + rng() * 7;
+    car.wait = 0;
+    if (horizontal) { car.x = along; car.z = road + laneFor('x', 0, dir); car.heading = dir > 0 ? Math.PI / 2 : -Math.PI / 2; }
+    else { car.x = road + laneFor('z', 0, dir); car.z = along; car.heading = dir > 0 ? 0 : Math.PI; }
+    mesh.position.set(car.x, 0, car.z);
+    mesh.rotation.y = car.heading;
     cars.push(car);
   }
-  return { cars };
+  return { cars, rng };
 }
 
-// A traffic light is red for a lane when the global phase disagrees with its own.
-export function lightIsRed(light, time) {
-  const cycle = Math.floor(time / 7) % 2;
-  return cycle !== light.phase;
+function lightIsRed(lights, x, z, axis) {
+  // A light controls its intersection; red when its phase says so.
+  for (const l of lights) {
+    if (Math.hypot(l.x - x, l.z - z) < 26) return l.phase === 0;
+  }
+  return false;
 }
 
-export function updateTraffic(traffic, city, dt, time, playerCar, policeCars) {
-  const allCars = [...traffic.cars, ...(playerCar ? [playerCar] : []), ...policeCars];
-  for (const car of traffic.cars) {
-    let targetSpeed = car.cruiseSpeed;
-    // Stop at a red light near an intersection on this road.
-    for (const light of city.trafficLights) {
-      const onRoad = car.horizontal ? Math.abs(car.z - light.z) < 8 : Math.abs(car.x - light.x) < 8;
-      if (!onRoad) continue;
-      const dist = car.horizontal ? (light.x - car.x) * car.dir : (light.z - car.z) * car.dir;
-      if (dist > 2 && dist < 14 && lightIsRed(light, time)) { targetSpeed = 0; break; }
+export function updateTraffic(traffic, city, dt, playerPos, parkedCars = []) {
+  const { cars } = traffic;
+  for (const car of cars) {
+    // Slow for the car ahead on the same road.
+    let target = car.cruise;
+    for (const other of cars) {
+      if (other === car || other.horizontal !== car.horizontal) continue;
+      if (Math.abs(other.road - car.road) > 2) continue;
+      const ahead = car.horizontal
+        ? (other.x - car.x) * car.dir
+        : (other.z - car.z) * car.dir;
+      if (ahead > 0 && ahead < 14) target = Math.min(target, 0);
     }
-    // Slow for the car ahead on the same lane.
-    for (const other of allCars) {
-      if (other === car || other.parked) continue;
-      const sameLane = car.horizontal === (other.kind === 'traffic' ? other.horizontal : true) &&
-        Math.abs((car.horizontal ? car.z : car.x) - (car.horizontal ? other.z : other.x)) < 4;
-      if (!sameLane) continue;
-      const ahead = car.horizontal ? (other.x - car.x) * car.dir : (other.z - car.z) * car.dir;
-      if (ahead > 0 && ahead < 10) { targetSpeed = Math.min(targetSpeed, 0); break; }
-      if (ahead > 0 && ahead < 18) { targetSpeed = Math.min(targetSpeed, car.cruiseSpeed * 0.5); }
+    // Stop behind a parked car in the same lane (same side of the road).
+    for (const parked of parkedCars) {
+      if (!parked.parked) continue;
+      if (car.horizontal) {
+        if (Math.sign(parked.z - car.road) !== Math.sign(car.z - car.road)) continue;
+        if (Math.abs(parked.z - car.road) > 5) continue;
+        const ahead = (parked.x - car.x) * car.dir;
+        if (ahead > 0 && ahead < 13) target = Math.min(target, 0);
+      } else {
+        if (Math.sign(parked.x - car.road) !== Math.sign(car.x - car.road)) continue;
+        if (Math.abs(parked.x - car.road) > 5) continue;
+        const ahead = (parked.z - car.z) * car.dir;
+        if (ahead > 0 && ahead < 13) target = Math.min(target, 0);
+      }
     }
-    car.speed += (targetSpeed - car.speed) * Math.min(1, dt * 2.5);
-    if (car.horizontal) car.x += car.dir * car.speed * dt;
-    else car.z += car.dir * car.speed * dt;
+    // Stop at a red light near an intersection.
+    const aheadX = car.x + Math.sin(car.heading) * 12;
+    const aheadZ = car.z + Math.cos(car.heading) * 12;
+    if (lightIsRed(city.trafficLights, aheadX, aheadZ)) target = 0;
+    // Don't ram the player.
+    if (playerPos) {
+      const d = Math.hypot(playerPos.x - car.x, playerPos.z - car.z);
+      if (d < 9) target = Math.min(target, 0);
+    }
+    car.speed += (target - car.speed) * Math.min(1, dt * 1.6);
+    const step = car.speed * dt;
+    if (car.horizontal) car.x += car.dir * step; else car.z += car.dir * step;
     // Wrap around the city edge.
-    if (car.x > 205) car.x = -205;
-    if (car.x < -205) car.x = 205;
-    if (car.z > 205) car.z = -205;
-    if (car.z < -205) car.z = 205;
+    if (car.horizontal && (car.x > 275 || car.x < -275)) car.x = -car.dir * 275;
+    if (!car.horizontal && (car.z > 275 || car.z < -275)) car.z = -car.dir * 275;
+    // Random turn at an intersection.
+    const nearRoad = Math.abs(((car.horizontal ? car.x : car.z) % ROAD_STEP + ROAD_STEP) % ROAD_STEP - 0) < 2
+      || Math.abs((((car.horizontal ? car.x : car.z) % ROAD_STEP + ROAD_STEP) % ROAD_STEP) - ROAD_STEP) < 2;
+    if (nearRoad && Math.abs(car.speed) > 2 && traffic.rng() < dt * 0.12) {
+      const cross = Math.round((car.horizontal ? car.x : car.z) / ROAD_STEP) * ROAD_STEP;
+      if (Math.abs(cross) <= 240) {
+        car.horizontal = !car.horizontal;
+        car.road = cross;
+        car.dir = traffic.rng() < 0.5 ? 1 : -1;
+        if (car.horizontal) {
+          car.z = car.road + laneFor('x', 0, car.dir);
+          car.heading = car.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+        } else {
+          car.x = car.road + laneFor('z', 0, car.dir);
+          car.heading = car.dir > 0 ? 0 : Math.PI;
+        }
+      }
+    }
     car.mesh.position.set(car.x, 0, car.z);
     car.mesh.rotation.y = car.heading;
-    for (const wheel of car.wheels) wheel.rotation.x += car.speed * dt * 2.4;
-  }
-  // Update light bulbs.
-  for (const light of city.trafficLights) {
-    light.bulb.material.color.setHex(lightIsRed(light, time) ? 0xff3333 : 0x33ff55);
+    const spin = car.speed * dt / 0.42;
+    for (const w of car.mesh.userData.wheels) w.rotation.x += spin;
   }
 }

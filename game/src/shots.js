@@ -1,64 +1,90 @@
-// shots.js — deterministic screenshot presets (?shot=1..4). Each preset places
-// the player, a car, police, a mission and a time of day so the 4 screenshots
-// are reproducible: cover chase, night car theft, yacht mission, Marina walk.
-export function applyShot(G, shot) {
-  const n = Number(shot) || 1;
-  const M = G.missions;
-  if (n === 1) {
-    // COVER: police chase, wanted 3, sport car, sirens, objective on HUD.
-    G.timeOfDay = 17.2;
-    G.wanted = 3;
-    G.wantedTimer = 0;
-    G.money = 12500;
-    G.health = 82;
-    M.start(2);
-    const car = G.parkedCars[0];
-    G.enterCar(car, true);
-    car.x = 40; car.z = 20; car.heading = Math.PI; car.speed = 18;
-    G.playerHeading = Math.PI;
-    G.camYaw = Math.PI;
-    G.hud.setObjective('Mission 3 — The Getaway', 'Drive to the Old Town safehouse — lose the cops!');
-    G.hud.showDialog('Mara Voss', '"Drive, Vex! The whole city is on us — get to Old Town!"', 9000);
-  } else if (n === 2) {
-    // Night car theft on the Neon Strip.
-    G.timeOfDay = 22.5;
-    G.wanted = 1;
-    G.money = 8300;
-    G.health = 100;
-    M.start(1);
-    const car = G.parkedCars[3];
-    G.playerX = car.x - 3.2; G.playerZ = car.z + 1.5;
-    G.playerHeading = Math.PI / 2;
-    G.camYaw = Math.PI / 2;
-    G.hud.setObjective('Mission 2 — Wheels for the Job', 'Steal a car on the Neon Strip');
-    G.hud.showDialog('Mara Voss', '"That one. Quiet now — and do not get spotted."', 9000);
-    G.hud.setPrompt('E — STEAL CAR');
-  } else if (n === 3) {
-    // Yacht mission with Mara's dialog.
-    G.timeOfDay = 19.8;
-    G.wanted = 2;
-    G.money = 21200;
-    G.health = 94;
-    M.start(6);
-    G.spawnMissionEnemies();
-    G.playerX = 150; G.playerZ = -84;
-    G.playerHeading = Math.PI * 0.75;
-    G.camYaw = Math.PI * 0.75;
-    G.hud.setObjective('Mission 7 — Boarding Party', 'Defeat the 4 yacht guards');
-    G.hud.showDialog('Mara Voss', '"The Star\'s guards are on rotation. Take them out — the vault is ours."', 9000);
-  } else {
-    // On-foot Marina morning: peds, traffic, tower, yacht in view.
-    G.timeOfDay = 10.5;
-    G.wanted = 0;
-    G.money = 5200;
-    G.health = 100;
-    M.start(0);
-    G.playerX = 118; G.playerZ = -84;
-    G.playerHeading = Math.PI * 0.62;
-    G.camYaw = Math.PI * 0.62;
-    G.hud.setObjective('Mission 1 — Welcome Back, Vex', 'Meet Mara Voss at the Marina tower');
-    G.hud.showDialog('Mara Voss', '"Out of prison and already bored? Meet me at the Marina tower."', 9000);
+// Screenshot mode: ?shot=N sets up a deterministic scene (player/car
+// position, wanted level, active mission, time of day) so the four
+// screenshots can be retaken with identical content.
+import * as THREE from 'three';
+
+export function applyShotMode(G) {
+  const q = new URLSearchParams(location.search);
+  const shot = Number(q.get('shot') || 0);
+  if (!shot) return false;
+  G.shotMode = shot;
+  const P = G.player;
+  const L = G.city.landmarks;
+
+  function placeCarAt(x, z, heading, type = 'sport') {
+    const car = G.parkedCars.find((c) => c.type === type) || G.parkedCars[0];
+    car.parked = false;
+    car.x = x; car.z = z; car.heading = heading; car.speed = 30;
+    car.mesh.position.set(x, 0, z);
+    car.mesh.rotation.y = heading;
+    P.car = car;
+    P.onFoot = false;
+    P.pos.set(x, 0, z);
+    P.heading = heading;
+    return car;
   }
-  G.hud.update(G);
-  G.updateSun();
+
+  if (shot === 1) {
+    // COVER: police chase — player in a sports car, 2 patrol cars ahead
+    // closing in, 3 stars, sirens, minimap + objective visible, late sun.
+    G.timeOfDay = 0.45;
+    placeCarAt(0, 60, Math.PI, 'sport');
+    P.wanted = 3;
+    G.missions.index = 2;
+    G.missions.step = 1;
+    G.missions.active = true;
+    G.hud.setObjective('CONTAINER HEIST', 'Escape to the Playa beach — lose the tail', 'Mission 3/8 · Reward $3,500');
+    // Two police cars ahead on the same road, closing in (spawned by main.js).
+    G._shotPoliceSpots = [{ x: -4, z: 30 }, { x: 4, z: 26 }];
+    G.audio.siren(true);
+  } else if (shot === 2) {
+    // Car theft on the Neon Strip at night — player beside a car, E prompt.
+    G.timeOfDay = 0.75;
+    P.pos.set(6, 0, 6);
+    P.heading = Math.PI / 2;
+    P.camYaw = Math.PI / 2;
+    P.onFoot = true;
+    P.wanted = 0;
+    G.missions.index = 0;
+    G.missions.step = 0;
+    G.missions.active = true;
+    G.hud.setObjective('FIRST WHEELS', 'Steal a car — walk up to a parked car and press E', 'Mission 1/8 · Reward $500');
+    const car = G.parkedCars.find((c) => c.type === 'sport') || G.parkedCars[0];
+    car.x = 10; car.z = 6; car.heading = Math.PI / 2;
+    car.mesh.position.set(10, 0, 6);
+    car.mesh.rotation.y = Math.PI / 2;
+    G._shotStealCar = car;
+  } else if (shot === 3) {
+    // Mission in progress — Mara's recon at the Solmar Star yacht, dusk.
+    G.timeOfDay = 0.5;
+    P.pos.set(278, 0, -138);
+    P.heading = Math.PI / 2 + 0.5;
+    P.camYaw = Math.PI / 2 + 0.5;
+    P.onFoot = true;
+    P.wanted = 0;
+    G.missions.index = 4;
+    G.missions.step = 1;
+    G.missions.active = true;
+    G.hud.setObjective('CASINO RECON', 'Scan the vault door — hold E', 'Mission 5/8 · Reward $4,000');
+    G.hud.say('MARA VOSS', '"The Solmar Star. Get on board, scan the vault door, get out."');
+    G._shotGuards = [{ x: 284, z: -130 }, { x: 282, z: -166 }];
+  } else if (shot === 4) {
+    // On foot in the Marina by day — pedestrians, traffic, the tower.
+    G.timeOfDay = 0.3;
+    P.pos.set(180, 0, -120);
+    P.heading = Math.PI;
+    P.camYaw = Math.PI;
+    P.onFoot = true;
+    P.wanted = 0;
+    G.missions.index = 0;
+    G.missions.step = 0;
+    G.missions.active = true;
+    G.hud.setObjective('FIRST WHEELS', 'Steal a car — walk up to a parked car and press E', 'Mission 1/8 · Reward $500');
+  }
+
+  G.state = 'playing';
+  G.hud.hideStart();
+  G.hud.showHud();
+  G.audio.unlock();
+  return true;
 }

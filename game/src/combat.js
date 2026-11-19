@@ -1,155 +1,154 @@
-// combat.js — punching (F), shooting (mouse click), armed mission enemies
-// who return fire, and player health.
+// Combat: armed guards with simple AI (approach, shoot, take damage) and the
+// player's punch (F) and hitscan shooting (mouse click) with a tracer line.
 import * as THREE from 'three';
-import { mulberry32 } from './city.js';
 
-export function createCombat(scene, onEvent) {
-  const state = {
-    enemies: [],
-    bullets: [],
-    lastShot: 0,
-    enemyShotT: 0,
-  };
+export function createCombat(scene) {
+  return { scene, enemies: [], tracers: [], punchCd: 0, shootCd: 0 };
+}
 
-  function makeEnemyMesh() {
-    const group = new THREE.Group();
+export function spawnEnemies(combat, spots) {
+  for (const s of spots) {
+    const g = new THREE.Group();
     const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.45, 0.9, 4, 8),
-      new THREE.MeshLambertMaterial({ color: 0x3a2a2a }),
+      new THREE.CapsuleGeometry(0.5, 1.0, 4, 8),
+      new THREE.MeshLambertMaterial({ color: 0x2a2a30 }),
     );
-    body.position.y = 1.1;
-    group.add(body);
-    const vest = new THREE.Mesh(
-      new THREE.BoxGeometry(0.9, 0.7, 0.5),
-      new THREE.MeshLambertMaterial({ color: 0x1a1a1a }),
-    );
-    vest.position.y = 1.2;
-    group.add(vest);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), new THREE.MeshLambertMaterial({ color: 0xd8a078 }));
-    head.position.y = 2.0;
-    group.add(head);
-    const gun = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, 0.12, 0.9),
-      new THREE.MeshLambertMaterial({ color: 0x111111 }),
-    );
-    gun.position.set(0.4, 1.3, 0.4);
-    group.add(gun);
-    return group;
+    body.position.y = 1.2;
+    g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 8),
+      new THREE.MeshLambertMaterial({ color: 0xd8a878 }));
+    head.position.y = 2.2;
+    g.add(head);
+    const gun = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.9),
+      new THREE.MeshLambertMaterial({ color: 0x111111 }));
+    gun.position.set(0.4, 1.5, 0.6);
+    g.add(gun);
+    // Health bar above the head.
+    const barBg = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.18),
+      new THREE.MeshBasicMaterial({ color: 0x330000 }));
+    barBg.position.y = 2.9;
+    g.add(barBg);
+    const bar = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.18),
+      new THREE.MeshBasicMaterial({ color: 0xff3020 }));
+    bar.position.set(0, 2.9, 0.01);
+    g.add(bar);
+    g.position.set(s.x, 0, s.z);
+    combat.scene.add(g);
+    combat.enemies.push({
+      group: g, bar, x: s.x, z: s.z, health: 100, shootT: 1 + Math.random() * 2,
+      heading: 0, phase: Math.random() * 6,
+    });
+  }
+}
+
+export function clearEnemies(combat) {
+  for (const e of combat.enemies) combat.scene.remove(e.group);
+  combat.enemies = [];
+}
+
+function addTracer(combat, from, to) {
+  const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe62a }));
+  combat.scene.add(line);
+  combat.tracers.push({ line, life: 0.12 });
+}
+
+export function updateCombat(combat, G, dt) {
+  combat.punchCd = Math.max(0, combat.punchCd - dt);
+  combat.shootCd = Math.max(0, combat.shootCd - dt);
+  const p = G.player.pos;
+
+  // Tracers fade out.
+  for (let i = combat.tracers.length - 1; i >= 0; i--) {
+    const t = combat.tracers[i];
+    t.life -= dt;
+    if (t.life <= 0) { combat.scene.remove(t.line); combat.tracers.splice(i, 1); }
   }
 
-  state.spawnEnemies = function spawnEnemies(center, count, rngSeed) {
-    const rng = mulberry32(rngSeed);
-    for (const e of state.enemies) scene.remove(e.mesh);
-    state.enemies = [];
-    for (let i = 0; i < count; i++) {
-      const mesh = makeEnemyMesh();
-      const x = center.x + (rng() - 0.5) * 18;
-      const z = center.z + (rng() - 0.5) * 18;
-      mesh.position.set(x, 0, z);
-      scene.add(mesh);
-      state.enemies.push({ mesh, x, z, health: 3, shootT: 1 + rng() * 2, alive: true });
-    }
-    return state.enemies;
-  };
-
-  state.clearEnemies = function clearEnemies() {
-    for (const e of state.enemies) scene.remove(e.mesh);
-    state.enemies = [];
-  };
-
-  state.enemiesAlive = function enemiesAlive() {
-    return state.enemies.filter((e) => e.alive).length;
-  };
-
-  // Melee: hit the nearest enemy or pedestrian within 2.2 m in front.
-  state.punch = function punch(playerPos, heading, targets) {
-    let hit = false;
-    for (const t of targets) {
-      if (!t.alive) continue;
-      const dx = t.x - playerPos.x;
-      const dz = t.z - playerPos.z;
+  // Player punch: F, short range, in front.
+  if (G.input.wasPressed('KeyF') && combat.punchCd <= 0 && G.player.onFoot) {
+    combat.punchCd = 0.45;
+    G.audio.punch();
+    const fx = Math.sin(G.player.heading), fz = Math.cos(G.player.heading);
+    for (const e of [...combat.enemies]) {
+      const dx = e.x - p.x, dz = e.z - p.z;
       const d = Math.hypot(dx, dz);
-      if (d < 2.4) {
-        t.health -= 1;
-        if (t.health <= 0) {
-          t.alive = false;
-          if (t.mesh) t.mesh.visible = false;
-        }
-        hit = true;
+      if (d < 3.2 && (dx * fx + dz * fz) / Math.max(0.1, d) > 0.3) {
+        damageEnemy(combat, G, e, 34);
       }
     }
-    if (onEvent) onEvent(hit ? 'punch-hit' : 'punch-miss');
-    return hit;
-  };
+  }
 
-  // Hitscan shot: fire from the player's chest along the camera's
-  // horizontal aim direction (screen centre), so the crosshair hits what
-  // it points at at any range instead of diving into the ground.
-  state.shoot = function shoot(camera, playerPos) {
-    const now = performance.now();
-    if (now - state.lastShot < 220) return null;
-    state.lastShot = now;
+  // Player shoot: mouse click, hitscan toward the camera aim point.
+  if (G.input.mouse.clicked && combat.shootCd <= 0 && G.player.onFoot) {
+    combat.shootCd = 0.28;
+    G.audio.shot();
+    if (G.player.wanted < 2 && G.combat.enemies.length > 0) {
+      // Firing near guards is a crime.
+      G.player.wanted = Math.min(5, G.player.wanted + 1);
+      G.player.wantedTimer = 0;
+    }
+    const origin = new THREE.Vector3(p.x, 1.6, p.z);
     const dir = new THREE.Vector3();
-    camera.getWorldDirection(dir);
-    dir.y = 0;
-    if (dir.lengthSq() < 0.01) dir.set(0, 0, 1);
-    dir.normalize();
-    const origin = new THREE.Vector3(playerPos.x, 1.4, playerPos.z);
-    const ray = new THREE.Raycaster(origin, dir, 0.5, 70);
-    const meshes = state.enemies.filter((e) => e.alive).map((e) => e.mesh);
-    const hits = ray.intersectObjects(meshes, true);
-    let hitEnemy = null;
-    if (hits.length > 0) {
-      let obj = hits[0].object;
-      while (obj && !state.enemies.some((e) => e.mesh === obj)) obj = obj.parent;
-      hitEnemy = state.enemies.find((e) => e.mesh === obj) || null;
-      if (hitEnemy) {
-        hitEnemy.health -= 1;
-        if (hitEnemy.health <= 0) {
-          hitEnemy.alive = false;
-          hitEnemy.mesh.visible = false;
-        }
-      }
+    G.camera.getWorldDirection(dir);
+    const end = origin.clone().add(dir.clone().multiplyScalar(90));
+    let best = null, bd = 90;
+    for (const e of combat.enemies) {
+      // Distance from the enemy centre to the shot ray.
+      const toE = new THREE.Vector3(e.x - origin.x, 1.4 - origin.y, e.z - origin.z);
+      const along = toE.dot(dir);
+      if (along < 0 || along > 90) continue;
+      const perp = toE.clone().add(dir.clone().multiplyScalar(-along));
+      if (perp.length() < 2.2 && along < bd) { bd = along; best = e; }
     }
-    // Tracer line for feedback.
-    const from = new THREE.Vector3(playerPos.x, 1.4, playerPos.z);
-    const to = hits.length > 0 ? hits[0].point : origin.clone().addScaledVector(dir, 60);
-    const tracerGeo = new THREE.BufferGeometry().setFromPoints([from, to]);
-    const tracer = new THREE.Line(tracerGeo, new THREE.LineBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.9 }));
-    scene.add(tracer);
-    setTimeout(() => scene.remove(tracer), 70);
-    if (onEvent) onEvent(hitEnemy ? 'shot-hit' : 'shot', { enemy: hitEnemy });
-    return hitEnemy;
-  };
-
-  state.update = function update(dt, playerPos, onPlayerHit) {
-    for (const e of state.enemies) {
-      if (!e.alive) continue;
-      const dx = playerPos.x - e.x;
-      const dz = playerPos.z - e.z;
-      const d = Math.hypot(dx, dz);
-      e.mesh.rotation.y = Math.atan2(dx, dz);
-      if (d > 14) {
-        // Close the distance.
-        e.x += (dx / d) * 3.2 * dt;
-        e.z += (dz / d) * 3.2 * dt;
-        e.mesh.position.set(e.x, 0, e.z);
-      } else if (d < 2.2) {
-        e.x -= (dx / d) * 2 * dt;
-        e.z -= (dz / d) * 2 * dt;
-        e.mesh.position.set(e.x, 0, e.z);
-      }
-      e.shootT -= dt;
-      if (e.shootT <= 0 && d < 40) {
-        e.shootT = 1.4 + Math.random() * 1.2;
-        // Enemies are bad shots at range: hit chance falls with distance.
-        if (Math.random() < Math.max(0.08, 0.5 - d * 0.012)) {
-          if (onPlayerHit) onPlayerHit(4 + Math.floor(Math.random() * 5));
-        }
-        if (onEvent) onEvent('enemy-shot');
-      }
+    if (best) {
+      end.copy(origin).add(dir.clone().multiplyScalar(bd));
+      damageEnemy(combat, G, best, 50);
     }
-  };
+    addTracer(combat, origin, end);
+  }
 
-  return state;
+  // Enemy AI: walk toward the player, shoot when in range.
+  for (const e of [...combat.enemies]) {
+    const dx = p.x - e.x, dz = p.z - e.z;
+    const d = Math.hypot(dx, dz);
+    e.heading = Math.atan2(dx, dz);
+    e.group.rotation.y = e.heading;
+    e.group.position.set(e.x, Math.abs(Math.sin(G.time * 6 + e.phase)) * 0.05, e.z);
+    if (d > 10) {
+      const sp = 3.4 * dt;
+      e.x += Math.sin(e.heading) * sp;
+      e.z += Math.cos(e.heading) * sp;
+    }
+    e.shootT -= dt;
+    if (d < 34 && e.shootT <= 0) {
+      e.shootT = 1.1 + Math.random() * 0.9;
+      G.audio.enemyShot();
+      const hitChance = d < 12 ? 0.45 : d < 22 ? 0.28 : 0.14;
+      if (Math.random() < hitChance) {
+        G.player.health -= 8 + Math.random() * 7;
+        G.hud.flashDamage();
+        G.audio.crash(0.2);
+      }
+      const from = new THREE.Vector3(e.x, 1.5, e.z);
+      const to = new THREE.Vector3(p.x, 1.3, p.z);
+      addTracer(combat, from, to);
+    }
+    // Health bar faces the camera and scales with health.
+    e.bar.scale.x = Math.max(0.01, e.health / 100);
+    e.bar.position.x = -(1 - e.health / 100) * 0.8;
+    e.bar.lookAt(G.camera.position);
+    e.group.children[3].lookAt(G.camera.position);
+  }
+}
+
+function damageEnemy(combat, G, e, dmg) {
+  e.health -= dmg;
+  if (e.health <= 0) {
+    combat.scene.remove(e.group);
+    combat.enemies.splice(combat.enemies.indexOf(e), 1);
+    G.player.money += 150;
+    G.hud.toast('Guard down — +$150');
+    G.audio.pickup();
+  }
 }

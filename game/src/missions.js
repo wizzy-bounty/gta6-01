@@ -1,161 +1,275 @@
-// missions.js — "The Solmar Job": 8 chained story missions for Riko "Vex" Marlowe
-// and Mara Voss, ending in the Solmar Star yacht heist.
+// The Solmar Job: 8 chained story missions. Each mission is a list of steps
+// (reach a marker, hold E to work, steal a car, lose the cops, survive the
+// heat, clear the guards). The engine moves a 3D beacon to the current
+// target, updates the HUD objective, pays the reward and advances the chain.
 import * as THREE from 'three';
+import { spawnEnemies, clearEnemies } from './combat.js';
 
 export const MISSIONS = [
   {
-    id: 1, title: 'Welcome Back, Vex', pay: 500,
-    briefing: 'Mara Voss: "Out of prison and already bored? Meet me at the Marina tower. I have a job — a real one."',
-    objective: 'Meet Mara Voss at the Marina tower',
-    target: [140, -100], radius: 8, type: 'goto',
+    id: 1, title: 'FIRST WHEELS', reward: 500,
+    briefing: '"Vex. You\'re out. I need wheels and I need you. Steal a car — any car — then come find me on the Strip."',
+    steps: [
+      { kind: 'steal', text: 'Steal a car — walk up to a parked car and press E' },
+      { kind: 'reach', x: 6, z: 6, r: 6, text: 'Drive to Mara Voss on the Neon Strip' },
+    ],
   },
   {
-    id: 2, title: 'Wheels for the Job', pay: 800,
-    briefing: 'Mara Voss: "We need wheels that nobody will miss. Steal a car on the Neon Strip — and do not get spotted."',
-    objective: 'Steal a car on the Neon Strip',
-    target: [80, 60], radius: 10, type: 'steal',
+    id: 2, title: 'DOCKS RUN', reward: 1200,
+    briefing: '"First job is simple. A package is waiting at the Docks. Bring it back to me — no cops, no noise."',
+    steps: [
+      { kind: 'hold', x: 180, z: 180, r: 6, hold: 2, text: 'Pick up the package at the Docks — hold E' },
+      { kind: 'reach', x: 6, z: 6, r: 6, text: 'Bring the package back to Mara' },
+    ],
   },
   {
-    id: 3, title: 'The Getaway', pay: 1200,
-    briefing: 'Mara Voss: "Drive to the Old Town safehouse. The cops are already sniffing around — lose them or outrun them."',
-    objective: 'Drive to the Old Town safehouse',
-    target: [-120, 100], radius: 9, type: 'drive',
+    id: 3, title: 'CONTAINER HEIST', reward: 3500,
+    briefing: '"The yard crew leaves a container unguarded at dawn. Grab the crate inside, then vanish. This one will be loud."',
+    steps: [
+      { kind: 'hold', x: 130, z: 210, r: 6, hold: 3, text: 'Crack the container — hold E (this will raise the heat)', loud: true },
+      { kind: 'reach', x: -160, z: 290, r: 8, text: 'Escape to the Playa beach — lose the tail' },
+    ],
   },
   {
-    id: 4, title: 'Harbor Heat', pay: 2000,
-    briefing: 'Mara Voss: "The Docks crew wants a cut. Show them Solmar belongs to us — clear the warehouse guards."',
-    objective: 'Defeat the 3 Docks guards',
-    target: [-140, 178], radius: 16, type: 'shoot', enemies: 3,
+    id: 4, title: 'GETAWAY DRIVER', reward: 2000,
+    briefing: '"You\'re hot, Vex. Cool off. When the stars are gone, bring the car to the safehouse in Old Town."',
+    steps: [
+      { kind: 'cooldown', text: 'Lose the wanted level — hide until the stars clear' },
+      { kind: 'reach', x: -150, z: -138, r: 7, text: 'Reach the Old Town safehouse' },
+    ],
   },
   {
-    id: 5, title: 'Container Job', pay: 3500,
-    briefing: 'Mara Voss: "A container at the Docks holds the Star\'s vault codes. Crack it open and hold the dock while it uploads."',
-    objective: 'Crack the container at the Docks (hold the zone)',
-    target: [-160, 178], radius: 10, type: 'hold', holdTime: 6,
+    id: 5, title: 'CASINO RECON', reward: 4000,
+    briefing: '"The Solmar Star. The yacht casino. I need eyes on it before the big night — get on board, scan the vault door, get out. Guards patrol the pier."',
+    steps: [
+      { kind: 'reach', x: 288, z: -150, r: 7, text: 'Get to the Solmar Star yacht in the Marina (on foot)' },
+      { kind: 'hold', x: 292, z: -150, r: 6, hold: 3, text: 'Scan the vault door — hold E', guards: 2 },
+    ],
   },
   {
-    id: 6, title: 'Star Recon', pay: 3000,
-    briefing: 'Mara Voss: "Before we hit the Solmar Star, I need eyes on it. Scout the yacht from the dock — stay quiet, stay patient."',
-    objective: 'Scout the Solmar Star yacht (hold the zone)',
-    target: [168, -100], radius: 10, type: 'hold', holdTime: 8,
+    id: 6, title: 'THE INSIDE MAN', reward: 6000,
+    briefing: '"I\'m riding with you tonight. Pick me up, then take me to the Old Town fixer. His crew is not friendly — be ready."',
+    steps: [
+      { kind: 'reach', x: 6, z: 6, r: 6, text: 'Pick up Mara on the Strip' },
+      { kind: 'reach', x: -180, z: -60, r: 8, text: 'Drive Mara to the Old Town fixer', guards: 3 },
+      { kind: 'clear', text: 'Clear the fixer\'s crew — F to punch, click to shoot' },
+      { kind: 'reach', x: -150, z: -138, r: 7, text: 'Get Mara to the safehouse' },
+    ],
   },
   {
-    id: 7, title: 'Boarding Party', pay: 5000,
-    briefing: 'Mara Voss: "The Star\'s guards are on rotation. Take out all four before the alarm spreads — then the vault is ours."',
-    objective: 'Defeat the 4 yacht guards',
-    target: [168, -100], radius: 18, type: 'shoot', enemies: 4,
+    id: 7, title: 'HEAT RISING', reward: 8000,
+    briefing: '"The whole city is looking for us now. Four stars, a helicopter — survive sixty seconds, then run for the airfield."',
+    steps: [
+      { kind: 'survive', seconds: 60, wanted: 4, text: 'Survive 60 seconds at 4 stars — the helicopter is up' },
+      { kind: 'reach', x: -210, z: 150, r: 9, text: 'Reach the airfield runway' },
+    ],
   },
   {
-    id: 8, title: 'The Solmar Job', pay: 15000,
-    briefing: 'Mara Voss: "This is it, Vex. Crack the vault on the Solmar Star, grab the take, and run. Whatever happens — do not stop."',
-    objective: 'Crack the Star vault, then escape to the safehouse',
-    target: [186, -118], radius: 8, type: 'finale', holdTime: 10,
+    id: 8, title: 'THE SOLMAR JOB', reward: 50000,
+    briefing: '"Tonight. The Solmar Star. We walk on, we take the vault, we walk off rich. This is the one, Vex — make it count."',
+    steps: [
+      { kind: 'reach', x: 288, z: -150, r: 7, text: 'Board the Solmar Star one last time' },
+      { kind: 'hold', x: 292, z: -150, r: 6, hold: 4, text: 'Crack the vault — hold E', guards: 3, loud: true },
+      { kind: 'reach', x: -150, z: -138, r: 7, text: 'Escape to the safehouse with the take' },
+    ],
   },
 ];
 
-export function createMissions(scene, onEvent) {
-  const markerGeo = new THREE.CylinderGeometry(1.1, 1.1, 26, 16, 1, true);
-  const markerMat = new THREE.MeshBasicMaterial({
-    color: 0xffc93a, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false,
-  });
-  const marker = new THREE.Mesh(markerGeo, markerMat);
-  marker.visible = false;
-  scene.add(marker);
-  const ringGeo = new THREE.RingGeometry(2.2, 3.2, 32);
-  const ringMat = new THREE.MeshBasicMaterial({ color: 0xffc93a, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
-  const ring = new THREE.Mesh(ringGeo, ringMat);
+export function createMissions(scene) {
+  // 3D beacon: a light pillar + a spinning diamond over the current target.
+  const beacon = new THREE.Group();
+  const pillar = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.6, 1.6, 60, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }),
+  );
+  pillar.position.y = 30;
+  beacon.add(pillar);
+  const gem = new THREE.Mesh(new THREE.OctahedronGeometry(1.6),
+    new THREE.MeshBasicMaterial({ color: 0xffd23f }));
+  gem.position.y = 10;
+  beacon.add(gem);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(3, 4.4, 24),
+    new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.15;
-  ring.visible = false;
-  scene.add(ring);
-
-  const state = {
-    index: 0,
-    active: false,
-    holdT: 0,
-    escapePhase: false,
-    marker,
-    ring,
-    started: false,
+  beacon.add(ring);
+  beacon.visible = false;
+  scene.add(beacon);
+  return {
+    index: 0, step: 0, holdT: 0, surviveT: 0, beacon, gem, pillar,
+    active: false, done: false, guardsSpawned: false, stepDoneFlash: 0,
   };
+}
 
-  state.current = function current() { return MISSIONS[state.index] || null; };
+export function currentMission(missions) {
+  return MISSIONS[Math.min(missions.index, MISSIONS.length - 1)];
+}
 
-  state.start = function start(index) {
-    state.index = Math.min(index, MISSIONS.length - 1);
-    state.active = true;
-    state.holdT = 0;
-    state.escapePhase = false;
-    state.started = true;
-    const m = state.current();
-    marker.visible = true;
-    ring.visible = true;
-    marker.position.set(m.target[0], 13, m.target[1]);
-    ring.position.set(m.target[0], 0.15, m.target[1]);
-    if (onEvent) onEvent('briefing', m);
-    return m;
-  };
+export function currentStep(missions) {
+  const m = currentMission(missions);
+  return m.steps[Math.min(missions.step, m.steps.length - 1)];
+}
 
-  state.complete = function complete() {
-    const m = state.current();
-    state.active = false;
-    marker.visible = false;
-    ring.visible = false;
-    if (onEvent) onEvent('complete', m);
-    state.index += 1;
-    if (state.index < MISSIONS.length) {
-      state.start(state.index);
-    } else if (onEvent) {
-      onEvent('campaign-complete', m);
+export function startMission(G, index) {
+  const ms = G.missions;
+  ms.index = index;
+  ms.step = 0;
+  ms.holdT = 0;
+  ms.surviveT = 0;
+  ms.active = true;
+  ms.done = false;
+  ms.guardsSpawned = false;
+  const m = MISSIONS[index];
+  G.hud.setObjective(m.title, m.steps[0].text, `Mission ${index + 1}/8 · Reward $${m.reward.toLocaleString('en-US')}`);
+  G.hud.say('MARA VOSS', m.briefing);
+  G.audio.pickup();
+}
+
+function advanceStep(G) {
+  const ms = G.missions;
+  const m = currentMission(ms);
+  ms.step++;
+  ms.holdT = 0;
+  ms.surviveT = 0;
+  ms.guardsSpawned = false;
+  if (ms.step >= m.steps.length) {
+    completeMission(G);
+    return;
+  }
+  const s = m.steps[ms.step];
+  G.hud.setObjective(m.title, s.text, `Mission ${ms.index + 1}/8 · Reward $${m.reward.toLocaleString('en-US')}`);
+  G.audio.pickup();
+  if (s.kind === 'survive' && s.wanted) {
+    G.player.wanted = Math.max(G.player.wanted, s.wanted);
+    G.player.wantedTimer = 0;
+    G.hud.toast('WANTED LEVEL 4 — the helicopter is hunting you!');
+  }
+}
+
+function completeMission(G) {
+  const ms = G.missions;
+  const m = currentMission(ms);
+  G.player.money += m.reward;
+  G.hud.banner(`MISSION COMPLETE`, `+ $${m.reward.toLocaleString('en-US')} — ${m.title}`);
+  G.audio.missionComplete();
+  ms.beacon.visible = false;
+  if (ms.index >= MISSIONS.length - 1) {
+    ms.done = true;
+    ms.active = false;
+    G.state = 'complete';
+    G.hud.showComplete();
+    return;
+  }
+  ms.index++;
+  ms.step = 0;
+  ms.holdT = 0;
+  ms.surviveT = 0;
+  ms.guardsSpawned = false;
+  const next = MISSIONS[ms.index];
+  G.hud.setObjective(next.title, next.steps[0].text, `Mission ${ms.index + 1}/8 · Reward $${next.reward.toLocaleString('en-US')}`);
+  setTimeout(() => G.hud.say('MARA VOSS', next.briefing), 1800);
+}
+
+function failMission(G, reason) {
+  const ms = G.missions;
+  G.hud.banner('MISSION FAILED', reason);
+  G.audio.missionFail();
+  ms.step = 0;
+  ms.holdT = 0;
+  ms.surviveT = 0;
+  ms.guardsSpawned = false;
+  const m = currentMission(ms);
+  G.hud.setObjective(m.title, m.steps[0].text, `Mission ${ms.index + 1}/8 · Reward $${m.reward.toLocaleString('en-US')}`);
+  G.hud.say('MARA VOSS', '"Again. From the top — ' + m.title + '."');
+}
+
+export function updateMissions(G, dt) {
+  const ms = G.missions;
+  if (!ms.active || ms.done) return;
+  const m = currentMission(ms);
+  const s = currentStep(ms);
+  const p = G.player.pos;
+
+  // Spawn step guards once.
+  if (s.guards && !ms.guardsSpawned) {
+    ms.guardsSpawned = true;
+    const spots = [];
+    for (let i = 0; i < s.guards; i++) {
+      spots.push({ x: (s.x || 0) + 8 + i * 6, z: (s.z || 0) + 6 - i * 5 });
     }
-  };
+    spawnEnemies(G.combat, spots);
+    G.hud.toast(`${s.guards} armed guard${s.guards > 1 ? 's' : ''} on site!`);
+  }
 
-  state.fail = function fail(reason) {
-    if (onEvent) onEvent('fail', { mission: state.current(), reason });
-    state.holdT = 0;
-    state.escapePhase = false;
-  };
+  // Move the beacon to the current target (or hide it for non-position steps).
+  if (s.x !== undefined) {
+    ms.beacon.visible = true;
+    ms.beacon.position.set(s.x, 0, s.z);
+    ms.gem.rotation.y += dt * 2;
+    ms.gem.position.y = 10 + Math.sin(G.time * 2.4) * 0.8;
+  } else {
+    ms.beacon.visible = false;
+  }
 
-  state.update = function update(dt, playerPos, inCar, enemiesLeft) {
-    if (!state.active) return;
-    const m = state.current();
-    if (!m) return;
-    marker.rotation.y += dt * 1.2;
-    ring.scale.setScalar(1 + Math.sin(performance.now() / 300) * 0.08);
-    const dist = Math.hypot(playerPos.x - m.target[0], playerPos.z - m.target[1]);
-    if (m.type === 'goto' || m.type === 'drive') {
-      if (dist < m.radius) state.complete();
-    } else if (m.type === 'steal') {
-      if (inCar && dist < m.radius) state.complete();
-    } else if (m.type === 'shoot') {
-      if (enemiesLeft <= 0) state.complete();
-    } else if (m.type === 'hold') {
-      if (dist < m.radius) {
-        state.holdT += dt;
-        if (onEvent) onEvent('hold', { mission: m, progress: Math.min(1, state.holdT / m.holdTime) });
-        if (state.holdT >= m.holdTime) state.complete();
-      } else {
-        state.holdT = Math.max(0, state.holdT - dt * 2);
-      }
-    } else if (m.type === 'finale') {
-      if (!state.escapePhase) {
-        if (dist < m.radius) {
-          state.holdT += dt;
-          if (onEvent) onEvent('hold', { mission: m, progress: Math.min(1, state.holdT / m.holdTime) });
-          if (state.holdT >= m.holdTime) {
-            state.escapePhase = true;
-            marker.position.set(100, 13, -60);
-            ring.position.set(100, 0.15, -60);
-            if (onEvent) onEvent('escape', m);
+  const dist = s.x !== undefined ? Math.hypot(p.x - s.x, p.z - s.z) : 999;
+
+  switch (s.kind) {
+    case 'steal':
+      if (!G.player.onFoot) advanceStep(G);
+      break;
+    case 'reach':
+      if (dist < (s.r || 6)) advanceStep(G);
+      break;
+    case 'hold': {
+      const near = dist < (s.r || 6);
+      const holding = near && G.input.isDown('KeyE');
+      if (holding) {
+        ms.holdT += dt;
+        G.hud.setHoldProgress(ms.holdT / s.hold);
+        if (ms.holdT >= s.hold) {
+          G.hud.setHoldProgress(0);
+          if (s.loud) {
+            G.player.wanted = Math.min(5, G.player.wanted + 2);
+            G.player.wantedTimer = 0;
+            G.audio.wantedUp();
+            G.hud.toast('The alarm is ringing — wanted level up!');
           }
-        } else {
-          state.holdT = Math.max(0, state.holdT - dt * 2);
+          advanceStep(G);
         }
-      } else if (Math.hypot(playerPos.x - 100, playerPos.z + 60) < 10) {
-        state.complete();
+      } else {
+        ms.holdT = Math.max(0, ms.holdT - dt * 2);
+        G.hud.setHoldProgress(ms.holdT / s.hold);
       }
+      break;
     }
-  };
+    case 'cooldown':
+      if (G.player.wanted === 0) advanceStep(G);
+      break;
+    case 'survive':
+      ms.surviveT += dt;
+      G.hud.setObjective(m.title, `${s.text} — ${Math.ceil(s.seconds - ms.surviveT)}s left`, `Mission ${ms.index + 1}/8`);
+      if (G.player.wanted < (s.wanted || 4)) {
+        G.player.wanted = s.wanted || 4;
+        G.player.wantedTimer = 0;
+      }
+      if (ms.surviveT >= s.seconds) advanceStep(G);
+      break;
+    case 'clear':
+      if (G.combat.enemies.length === 0 && ms.guardsSpawned) advanceStep(G);
+      break;
+    default:
+      break;
+  }
 
-  return state;
+  // Death fails the mission (respawn at the safehouse, half the cash kept).
+  if (G.player.health <= 0) {
+    G.player.health = 100;
+    G.player.money = Math.floor(G.player.money / 2);
+    G.player.wanted = 0;
+    G.player.pos.set(-150, 0, -130);
+    G.player.heading = 0;
+    if (G.player.car) { G.player.car.parked = true; G.player.car = null; G.player.onFoot = true; }
+    clearEnemies(G.combat);
+    failMission(G, 'You were taken down — Mara patched you up at the safehouse.');
+  }
 }

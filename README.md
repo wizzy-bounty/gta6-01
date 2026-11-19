@@ -1,65 +1,66 @@
-# SOLMAR HEAT — Open-World Crime in Solmar City
+# SOLMAR HEAT
 
-[![make.fun](https://img.shields.io/badge/make.fun-gta6--01-ff2e88)](https://make.fun/c/gta6-01)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![three.js](https://img.shields.io/badge/three.js-r160-blue)](https://threejs.org)
+An original open-world crime game for make.fun `gta6-01`, built from scratch
+with three.js (vendored) and zero network requests at play time.
 
-An original open-world crime game that runs offline in a desktop browser from
-static files — no build step, no network. You are **Riko “Vex” Marlowe**, a
-getaway driver fresh out of prison, pulled back into Solmar City by **Mara
-Voss** for one last job: **“The Solmar Job”** — eight chained story missions
-across five districts, ending in a heist on the **Solmar Star** casino yacht.
+You are **Riko "Vex" Marlowe**, a getaway driver fresh out of prison, pulled
+back into Solmar City by **Mara Voss** for one last chain of jobs — **The
+Solmar Job** — ending in a heist on the Solmar Star, a casino yacht moored in
+the Marina.
 
 ## The city
 
-Solmar City is a sun-soaked coastal city with five readable districts:
+Solmar City has five districts, each with its own palette and landmarks:
 
-- **Marina** (blue-white) — tower, yacht basin, your safehouse
-- **Old Town** (yellow brick) — tight streets, the first hideout
-- **Neon Strip** (purple-pink) — nightlife, neon trim, best cars to steal
-- **Docks** (rust grey) — containers, cranes, the vault-code job
-- **Solmar Airport** (north) — runway, terminal, control tower
+- **Marina** (blue-white) — the harbour, the Solmar Star yacht, the Marina Tower
+- **Old Town** (yellow brick) — narrow streets, cafés, the safehouse
+- **Neon Strip** (purple-pink, alive at night) — clubs, neon signs, fast cars
+- **Docks** (rust grey) — containers, cranes, the heist yard
+- **Airfield & Playa** (sand and tarmac) — the runway, the beach, the escape route
 
-## Systems
+A full day/night cycle rolls over the city; the Strip lights up after dark.
 
-- **On foot & by car** — third-person walking, smooth chase camera, steal any parked car with `E`
-- **Wanted 1–5** — police cars chase and ram; at wanted 4–5 a **police helicopter** circles with a searchlight
-- **Live city** — AI traffic that stops at red lights, pedestrians who stroll and flee
-- **8 story missions** — briefing dialog from Mara Voss, HUD objectives, hold-the-zone, shootouts, and a vault-crack finale with a getaway escape
-- **Combat** — punch (`F`) and shoot (mouse click) against armed guards
-- **HUD + minimap** — money, health, wanted stars, district, clock, mission marker, traffic and police dots
-- **Radio** — two synth stations (`R` to switch): SOLMAR FM 101.2 and HEAT 98.5
-- **Save** — the safehouse auto-saves and clears your wanted level; continue from the start screen
-- **Polish** — day/night cycle, synth engine/siren/crash/gunshot audio, crash camera shake, start screen and pause menu
+## What you can do
+
+- Explore on foot (third person) or steal any parked car (**E**) and drive it
+- 8 chained story missions with briefings, markers and HUD objectives
+- Wanted level, 1–5 stars: police cars chase and ram you; at 4–5 stars a
+  police helicopter circles overhead with a searchlight
+- Live traffic that stops at red lights, pedestrians who scatter when you
+  speed at them
+- Combat: punch (**F**) and shoot (mouse click); armed guards in heist missions
+- Car radio with two stations (**R** to switch, **M** to mute)
+- Safehouse save: park at the Old Town safehouse and your progress, money and
+  position are saved (localStorage); **Continue** on the start screen resumes
+- HUD with minimap, wanted stars, cash, health, speed and mission tracker
+- Synth sound throughout: engine, sirens, gunfire, impacts, radio music
 
 ## Controls
 
 | Key | Action |
 | --- | --- |
-| WASD / arrows | Walk / drive |
-| Mouse drag | Camera |
-| E | Steal / enter car, exit car |
+| W A S D | Move / drive (W accelerate, S brake/reverse) |
+| Shift | Sprint on foot |
+| Space | Brake (car) / jump (on foot) |
+| E | Steal / enter car, interact, hold to complete objectives |
 | F | Punch |
 | Mouse click | Shoot |
 | R | Switch radio station |
-| Shift | Sprint |
-| P / Esc | Pause |
+| M | Mute radio |
+| P / Esc | Pause menu |
+| C | Toggle camera distance |
 
 ## Play it
 
-```bash
-node serve.ts
-# open http://localhost:8080
-```
-
-Or serve `game/` with any static file server and open `game/index.html`.
+Serve `game/` with any static server (or `node serve.ts`, then open
+http://localhost:8080) and play in desktop Chrome. No build step, no network.
 
 ## Screenshots
 
-`shots.json` lists the four deterministic screenshot scenes (`?shot=1..4`):
-chase cover, night car theft, yacht mission, Marina walk.
+`?shot=1` police chase · `?shot=2` car theft at night on the Strip ·
+`?shot=3` the yacht recon mission · `?shot=4` walking the Marina by day.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Built with vendored three.js r160
-(`game/vendor/three.min.js`).
+MIT — see `LICENSE`. All city, characters, vehicles, names, story, art and
+music are original; nothing is taken from any commercial game.

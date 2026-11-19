@@ -1,64 +1,47 @@
-// input.js — keyboard + mouse state for SOLMAR HEAT. One job: raw input only.
+// Keyboard + mouse input: held keys, edge-triggered presses, mouse look/shoot.
 export function createInput() {
   const keys = new Set();
-  const state = {
-    keys,
-    mouseDown: false,
-    mouseClicked: false,
-    dragDX: 0,
-    dragDY: 0,
-    dragging: false,
-    pointerLocked: false,
-  };
-  let lastX = 0;
-  let lastY = 0;
+  const pressed = new Set();
+  const mouse = { x: 0, y: 0, dx: 0, dy: 0, down: false, clicked: false };
+  let locked = false;
+
+  function keyOf(e) {
+    return e.code;
+  }
 
   window.addEventListener('keydown', (e) => {
-    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-    keys.add(e.code);
+    if (e.repeat) return;
+    keys.add(keyOf(e));
+    pressed.add(keyOf(e));
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault();
   });
-  window.addEventListener('keyup', (e) => keys.delete(e.code));
-  window.addEventListener('blur', () => keys.clear());
+  window.addEventListener('keyup', (e) => keys.delete(keyOf(e)));
+  window.addEventListener('blur', () => { keys.clear(); mouse.down = false; });
   window.addEventListener('mousedown', (e) => {
-    if (e.button === 0) { state.mouseDown = true; state.mouseClicked = true; }
-    state.dragging = true; lastX = e.clientX; lastY = e.clientY;
+    if (e.button === 0) { mouse.down = true; mouse.clicked = true; }
   });
-  window.addEventListener('mouseup', (e) => {
-    if (e.button === 0) state.mouseDown = false;
-    state.dragging = false;
-  });
+  window.addEventListener('mouseup', (e) => { if (e.button === 0) mouse.down = false; });
   window.addEventListener('mousemove', (e) => {
-    if (state.dragging) {
-      state.dragDX += e.clientX - lastX;
-      state.dragDY += e.clientY - lastY;
-      lastX = e.clientX; lastY = e.clientY;
-    }
+    mouse.dx += e.movementX || 0;
+    mouse.dy += e.movementY || 0;
+    mouse.x = e.clientX; mouse.y = e.clientY;
   });
-  document.addEventListener('pointerlockchange', () => {
-    state.pointerLocked = document.pointerLockElement != null;
-  });
-  return state;
-}
 
-export function consumeClick(input) {
-  const c = input.mouseClicked;
-  input.mouseClicked = false;
-  return c;
-}
-
-export function consumeDrag(input) {
-  const dx = input.dragDX;
-  const dy = input.dragDY;
-  input.dragDX = 0;
-  input.dragDY = 0;
-  return { dx, dy };
-}
-
-export function pressedOnce(input, code) {
-  if (input.keys.has(code)) {
-    input.keys.delete(code);
-    return true;
-  }
-  return false;
+  return {
+    keys, mouse,
+    isDown(code) { return keys.has(code); },
+    // Edge-triggered: true once per physical press; consumed at end of frame.
+    wasPressed(code) { return pressed.has(code); },
+    axis() {
+      let x = 0, z = 0;
+      if (keys.has('KeyW') || keys.has('ArrowUp')) z += 1;
+      if (keys.has('KeyS') || keys.has('ArrowDown')) z -= 1;
+      if (keys.has('KeyA') || keys.has('ArrowLeft')) x -= 1;
+      if (keys.has('KeyD') || keys.has('ArrowRight')) x += 1;
+      return { x, z };
+    },
+    endFrame() { pressed.clear(); mouse.dx = 0; mouse.dy = 0; mouse.clicked = false; },
+    get pointerLocked() { return locked; },
+    set pointerLocked(v) { locked = v; },
+  };
 }

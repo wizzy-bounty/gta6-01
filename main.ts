@@ -1,10 +1,11 @@
-// SOLMAR HEAT v7 — gta6-01 entry program (Node 22, standard library only).
-// This program hands the game in: it copies this repo's game/ and screenshots/
-// beside it into the output directory and writes dossier.json with the kit's
-// buildDossier library, exactly as the gate expects. It never touches the
-// network and it writes the same bytes on every run, so the grader's two
-// runs match byte for byte. Outside the grader, MAKEFUN_OUTPUT_DIR stands
-// in for /output:
+// SOLMAR HEAT — gta6-01 entry program (Node 22, standard library only).
+// Written for this entry: it copies the playable game/ folder and the
+// screenshots/ folder from beside this file into /output (or
+// MAKEFUN_OUTPUT_DIR) and writes /output/dossier.json with the vendored
+// make.fun library, so the sealed gate can check the entry byte for byte.
+// The game itself is plain static files under game/ — no build step, no
+// network at play time — and three.js is vendored as game/vendor/*.min.js.
+//
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -12,23 +13,22 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
-const repoRoot = fileURLToPath(new URL('.', import.meta.url));
-const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const here = fileURLToPath(new URL('.', import.meta.url));
+const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-// Fresh output tree, then the game and its screenshots, then the dossier.
-mkdirSync(outDir, { recursive: true });
-cpSync(join(repoRoot, 'game'), join(outDir, 'game'), { recursive: true });
-mkdirSync(join(outDir, 'screenshots'), { recursive: true });
-if (existsSync(join(repoRoot, 'screenshots'))) {
-  cpSync(join(repoRoot, 'screenshots'), join(outDir, 'screenshots'), { recursive: true });
-}
+mkdirSync(out, { recursive: true });
+cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
+mkdirSync(join(out, 'screenshots'), { recursive: true });
+if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 
-// The gate's caps from the kit's reference/gate.json: dossier text is capped
-// at 160 KiB; screenshots at 4 files of 256 KiB; game/ at 993 entries and
-// 48 MiB; every game path under 1000 bytes.
+// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the
+// bytes; the others refuse an entry the scorer would refuse (more than 4
+// screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of
+// game files, in all, or a path under game/ over 1000 bytes: game/ counts
+// beside /output's own 1000-entry cap, its screenshots/ and dossier.json).
 writeFileSync(
-  join(outDir, 'dossier.json'),
-  buildDossier(outDir, {
+  join(out, 'dossier.json'),
+  buildDossier(out, {
     text_max_bytes: 163840,
     screenshots: { max: 4, max_bytes: 262144 },
     game_max_files: 993,
