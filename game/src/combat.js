@@ -1,217 +1,143 @@
-// combat.js — Nico's violence: a weapon wheel (fists / pistol / SMG), a melee
-// swing, hitscan shooting from the camera, and the armed enemies Sable's jobs
-// put in his way — dockers and ferry guards who close in, strafe and shoot.
+// combat.js — fists, pistol and SMG for NEON TIDE: the weapon wheel data,
+// hitscan shooting with tracers, melee swings, and the armed enemies who
+// guard mission objectives and shoot back.
 
 import * as THREE from 'three';
-import { makePerson } from './pedestrians.js';
+import { makePersonMesh, animatePerson } from './pedestrians.js';
 
-export const WEAPONS = {
-  fists:  { label: 'FISTS',  dmg: 30, rate: 0.38, range: 2.6, spread: 0 },
-  pistol: { label: 'PISTOL', dmg: 34, rate: 0.34, range: 65, spread: 0.012, auto: false },
-  smg:    { label: 'SMG',    dmg: 16, rate: 0.095, range: 58, spread: 0.05, auto: true },
-};
-export const WEAPON_ORDER = ['fists', 'pistol', 'smg'];
+export const WEAPONS = [
+  { id: 'fists', name: 'Fists', damage: 16, range: 2.3, cooldown: 0.38, ammo: Infinity, auto: false },
+  { id: 'pistol', name: 'Harbor Pistol', damage: 26, range: 90, cooldown: 0.34, ammo: 72, auto: false },
+  { id: 'smg', name: 'Tide SMG', damage: 15, range: 75, cooldown: 0.095, ammo: 180, auto: true },
+];
 
 export class Combat {
-  constructor(scene, G) {
+  constructor(scene, audio) {
     this.scene = scene;
-    this.weapon = 'fists';
-    this.lastShotAt = -9;
-    this.shotsFiredAt = -9;
-    this.enemies = [];
-    this.raycaster = new THREE.Raycaster();
-    this.tracers = [];
-    G.enemies = this.enemies;
+    this.audio = audio;
+    this.weaponIndex = 0;
+    this.ammo = { pistol: WEAPONS[1].ammo, smg: WEAPONS[2].ammo };
+    this.cooldown = 0;
+    this.enemies = [];   // { mesh, x, z, health, phase, shootTimer, dead }
+    this.tracers = [];   // { line, ttl }
+    this.ray = new THREE.Raycaster();
   }
 
-  selectWeapon(name, G) {
-    if (!WEAPONS[name]) return;
-    this.weapon = name;
-    G.hud?.setWeapon(WEAPONS[name].label);
-    G.audio?.blip();
+  weapon() { return WEAPONS[this.weaponIndex]; }
+
+  ammoText() {
+    const w = this.weapon();
+    if (w.id === 'fists') return '—';
+    return `${this.ammo[w.id]}`;
   }
 
-  spawnEnemy(x, z, opts = {}) {
-    const mesh = makePerson(opts.coat ?? 0x30303c, 0xc98a5a);
-    mesh.position.set(x, 0.3, z);
-    const gun = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.55),
-      new THREE.MeshStandardMaterial({ color: 0x14151c, roughness: 0.4, metalness: 0.6 }));
-    gun.position.set(0.42, 1.15, 0.3); mesh.add(gun);
-    mesh.userData.entity = null; // set below
+  spawnEnemy(x, z, tough = 1) {
+    const mesh = makePersonMesh('#40222e', '#c98a5a', '#1c1c22');
+    mesh.position.set(x, 0, z);
     this.scene.add(mesh);
-    const enemy = {
-      mesh, health: opts.health ?? 100, dead: false, heading: 0,
-      shootAt: 1 + Math.random() * 1.4, strafe: Math.random() < 0.5 ? 1 : -1,
-      tag: opts.tag || 'enemy', phase: Math.random() * 6,
-    };
-    mesh.userData.entity = enemy;
+    const enemy = { mesh, x, z, health: 60 * tough, phase: Math.random() * 6, shootTimer: 1 + Math.random(), dead: false };
     this.enemies.push(enemy);
     return enemy;
   }
 
   clearEnemies() {
     for (const e of this.enemies) this.scene.remove(e.mesh);
-    this.enemies.length = 0;
+    this.enemies = [];
   }
 
-  /** Player attack: melee swing or a shot down the camera's centre line. */
-  attack(G) {
-    const w = WEAPONS[this.weapon];
-    if (G.time - this.lastShotAt < w.rate) return;
-    const p = G.player;
-    if (p.inCar) return;
-    this.lastShotAt = G.time;
-    const pp = p.group.position;
-    if (this.weapon === 'fists') {
-      G.audio?.melee();
-      p.punchAt = G.time;
-      const fx = Math.sin(p.heading), fz = Math.cos(p.heading);
-      let best = null, bestD = w.range;
+  aliveEnemies() { return this.enemies.filter(e => !e.dead).length; }
+
+  // Player attacks. origin/aim come from the player; returns a crime level
+  // (0 none, 1 shots fired, 2 hit someone) for the wanted system.
+  attack(dt, player, aimPoint, wantFire) {
+    this.cooldown -= dt;
+    const w = this.weapon();
+    let crime = 0;
+    if (!wantFire || this.cooldown > 0) return crime;
+    if (w.id !== 'fists' && this.ammo[w.id] <= 0) return crime;
+    this.cooldown = w.cooldown;
+    if (w.id === 'fists') {
+      this.audio.melee();
       for (const e of this.enemies) {
         if (e.dead) continue;
-        const ep = e.mesh.position, dx = ep.x - pp.x, dz = ep.z - pp.z;
-        const d = Math.hypot(dx, dz);
-        if (d < bestD && dx * fx + dz * fz > 0) { best = e; bestD = d; }
+        if (Math.hypot(e.x - player.pos.x, e.z - player.pos.z) < w.range) {
+          this.#hurtEnemy(e, w.damage);
+          crime = 2;
+        }
       }
-      for (const ped of G.peds || []) {
-        if (ped.dead) continue;
-        const ep = ped.mesh.position, dx = ep.x - pp.x, dz = ep.z - pp.z;
-        const d = Math.hypot(dx, dz);
-        if (d < bestD && dx * fx + dz * fz > 0) { best = ped; bestD = d; best.isPed = true; }
-      }
-      if (best) this.hurt(best, w.dmg, G, pp);
-      return;
+      return crime;
     }
-    // hitscan: the crosshair ray first; while the camera is still swinging
-    // behind Nico, fall back to the line he is actually facing.
-    this.shotsFiredAt = G.time;
-    G.audio?.shot(this.weapon);
-    G.police?.addCrime(0.55, pp);
-    const targets = [];
-    for (const e of this.enemies) if (!e.dead) targets.push(e.mesh);
-    for (const ped of G.peds || []) if (!ped.dead) targets.push(ped.mesh);
-    const spreadDir = (dir) => {
-      dir.x += (Math.random() - 0.5) * w.spread * 2;
-      dir.y += (Math.random() - 0.5) * w.spread;
-      dir.z += (Math.random() - 0.5) * w.spread * 2;
-      return dir.normalize();
-    };
-    const castFrom = (origin, dir) => {
-      this.raycaster.set(origin, dir);
-      this.raycaster.far = w.range;
-      const hits = this.raycaster.intersectObjects(targets, true);
-      return hits.length ? hits[0] : null;
-    };
-    const camDir = new THREE.Vector3();
-    G.camera.getWorldDirection(camDir);
-    let hit = castFrom(G.camera.position, spreadDir(camDir));
-    const from = pp.clone(); from.y += 1.45;
-    if (!hit) {
-      const faceDir = new THREE.Vector3(Math.sin(G.player.heading), -0.02, Math.cos(G.player.heading));
-      hit = castFrom(from, spreadDir(faceDir));
-    }
-    if (hit) {
-      let obj = hit.object, owner = null;
-      while (obj) { if (obj.userData.entity || obj.userData.pedRef) { owner = obj; break; } obj = obj.parent; }
-      const hitPoint = hit.point;
-      this.tracer(from, hitPoint, 0xffd94a);
-      G.spawnSparks?.(hitPoint.x, hitPoint.z, 4);
-      let entity = owner?.userData.entity || owner?.userData.pedRef;
-      if (!entity) { // fell back: nearest living thing to the hit point
-        entity = this.nearestLiving(hitPoint, G);
-      }
-      if (entity) this.hurt(entity, w.dmg, G, pp);
-    } else {
-      const end = from.clone().add(new THREE.Vector3(Math.sin(G.player.heading), 0, Math.cos(G.player.heading)).multiplyScalar(w.range * 0.7));
-      this.tracer(from, end, 0xffe9a8);
-    }
-  }
-
-  nearestLiving(point, G) {
-    let best = null, bestD = 2.2;
+    this.ammo[w.id]--;
+    this.audio.shot(w.id);
+    crime = 1;
+    // hitscan toward the aim point; nearest enemy near the line takes it
+    const origin = new THREE.Vector3(player.pos.x, 1.45, player.pos.z);
+    const dir = new THREE.Vector3(aimPoint.x - origin.x, 0.9 - origin.y + 0.6, aimPoint.z - origin.z).normalize();
+    let best = null, bestT = Infinity;
     for (const e of this.enemies) {
       if (e.dead) continue;
-      const d = e.mesh.position.distanceTo(point);
-      if (d < bestD) { best = e; bestD = d; }
+      const to = new THREE.Vector3(e.x - origin.x, 0, e.z - origin.z);
+      const t = to.dot(dir);
+      if (t < 0 || t > w.range) continue;
+      const perp = Math.hypot(to.x - dir.x * t, to.z - dir.z * t);
+      if (perp < 0.85 && t < bestT) { best = e; bestT = t; }
     }
-    for (const ped of G.peds || []) {
-      if (ped.dead) continue;
-      const d = ped.mesh.position.distanceTo(point);
-      if (d < bestD) { best = ped; bestD = d; best.isPed = true; }
-    }
-    return best;
+    const end = best
+      ? new THREE.Vector3(best.x, 1.1, best.z)
+      : origin.clone().add(dir.multiplyScalar(w.range * 0.6));
+    this.#tracer(origin, end);
+    if (best) { this.#hurtEnemy(best, w.damage); crime = 2; }
+    return crime;
   }
 
-  hurt(entity, dmg, G, fromPos) {
-    entity.health -= dmg;
-    if (entity.isPed || entity.loop) { // a pedestrian (has a sidewalk loop)
-      if (entity.health <= 0) G.pedsApi?.knockDown(entity, G, true);
-      else entity.panic = 3;
-      return;
-    }
-    if (entity.health <= 0 && !entity.dead) {
-      entity.dead = true;
-      entity.mesh.rotation.x = -Math.PI / 2;
-      entity.mesh.position.y = 0.45;
-      G.onEnemyDown?.(entity);
+  #hurtEnemy(enemy, damage) {
+    enemy.health -= damage;
+    this.audio.hit();
+    if (enemy.health <= 0 && !enemy.dead) {
+      enemy.dead = true;
+      enemy.mesh.rotation.x = Math.PI / 2;
+      enemy.mesh.position.y = 0.25;
     }
   }
 
-  tracer(a, b, color) {
+  #tracer(a, b) {
     const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
-    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85 }));
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: '#ffd76a', transparent: true, opacity: 0.9 }));
     this.scene.add(line);
-    this.tracers.push({ line, until: performance.now() + 70 });
+    this.tracers.push({ line, ttl: 0.06 });
   }
 
-  update(dt, G) {
-    const pp = G.player.group.position;
-    // fade tracers
-    const now = performance.now();
-    this.tracers = this.tracers.filter((t) => {
-      if (now > t.until) { this.scene.remove(t.line); t.line.geometry.dispose(); return false; }
-      return true;
-    });
+  // Enemies shuffle toward firing range and shoot back. Returns damage the
+  // player takes this frame plus the direction it came from.
+  update(dt, player, onPlayerHit) {
     for (const e of this.enemies) {
       if (e.dead) continue;
-      const pos = e.mesh.position;
-      // run down by the player's car
-      const car = G.player.inCar;
-      if (car && Math.abs(car.speed) > 4) {
-        const cp = car.group.position;
-        if (Math.abs(cp.x - pos.x) < 1.6 && Math.abs(cp.z - pos.z) < 2.3) { this.hurt(e, 100, G, cp); continue; }
+      const dx = player.pos.x - e.x, dz = player.pos.z - e.z;
+      const dist = Math.hypot(dx, dz);
+      e.mesh.position.set(e.x, 0, e.z);
+      e.mesh.rotation.y = Math.atan2(dx, dz);
+      if (dist > 17) {
+        e.x += (dx / dist) * dt * 2.6;
+        e.z += (dz / dist) * dt * 2.6;
+        e.phase += dt * 7;
+        animatePerson(e.mesh, e.phase, 1.2);
       }
-      const dx = pp.x - pos.x, dz = pp.z - pos.z;
-      const d = Math.hypot(dx, dz);
-      if (d >= 46) continue; // holding their ground until Nico comes close
-      e.heading = Math.atan2(dx, dz);
-      e.mesh.rotation.y = e.heading;
-      if (d > 16) { // close in
-        pos.x += Math.sin(e.heading) * 3.4 * dt;
-        pos.z += Math.cos(e.heading) * 3.4 * dt;
-      } else if (d < 8) { // back off a little
-        pos.x -= Math.sin(e.heading) * 1.6 * dt;
-        pos.z -= Math.cos(e.heading) * 1.6 * dt;
-      } else { // strafe
-        pos.x += Math.cos(e.heading) * e.strafe * 1.1 * dt;
-        pos.z -= Math.sin(e.heading) * e.strafe * 1.1 * dt;
-        if (Math.random() < dt * 0.25) e.strafe *= -1;
+      e.shootTimer -= dt;
+      if (dist < 30 && e.shootTimer <= 0) {
+        e.shootTimer = 0.9 + Math.random() * 0.9;
+        const from = new THREE.Vector3(e.x, 1.45, e.z);
+        const to = new THREE.Vector3(player.pos.x, 1.2, player.pos.z);
+        this.#tracer(from, to);
+        this.audio.shot('pistol');
+        if (Math.random() > 0.38) onPlayerHit(4 + Math.random() * 5, Math.atan2(-dx, -dz));
       }
-      G.city.collide(pos, 0.45);
-      pos.y = 0.3 + G.city.groundHeight(pos.x, pos.z);
-      e.phase += dt * 8;
-      const u = e.mesh.userData.parts;
-      if (u) { const s = Math.sin(e.phase) * 0.4; u.legL.rotation.x = s; u.legR.rotation.x = -s; }
-      // shooting: only with a bead on Nico and some range discipline
-      e.shootAt -= dt;
-      if (e.shootAt <= 0 && d < 34 && G.mode === 'playing') {
-        e.shootAt = 0.9 + Math.random() * 0.9;
-        G.audio?.enemyShot();
-        const from = pos.clone(); from.y += 1.5;
-        const to = pp.clone(); to.y += 1.2;
-        this.tracer(from, to, 0xff5040);
-        const hitChance = Math.max(0.08, 0.5 - d * 0.008 - (G.player.inCar ? 0.12 : 0) - (Math.abs(G.player.walkSpeed || 0) > 3 ? 0.1 : 0));
-        if (Math.random() < hitChance) G.damagePlayer?.(4 + Math.random() * 5, pos);
+    }
+    for (const t of [...this.tracers]) {
+      t.ttl -= dt;
+      if (t.ttl <= 0) {
+        this.scene.remove(t.line);
+        t.line.geometry.dispose();
+        this.tracers = this.tracers.filter(x => x !== t);
       }
     }
   }

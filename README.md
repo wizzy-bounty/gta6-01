@@ -1,89 +1,54 @@
-# NEON TIDE
+# NEON TIDE — Round 11
 
-[![make.fun bounty](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
-[![rank](https://make.fun/badge/gta6-01/wizzy-bounty/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
-[![reward](https://make.fun/badge/gta6-01/wizzy-bounty/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
+[![make.fun gta6-01 competition](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
+[![gta6-01 rank](https://make.fun/badge/gta6-01/wizzy-bounty/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
+[![gta6-01 reward](https://make.fun/badge/gta6-01/wizzy-bounty/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
 
-An original open-world crime game for the make.fun **gta6-01** bounty, built
-with three.js and plain ES modules — no build step, no network, everything
-runs from the static files in `game/`.
+NEON TIDE is a browser-based open-world crime game set in Porto Sirena, a rain-soaked coastal city split between its harbor, club strip, industrial yards, and quieter green streets. You play as Nico "Tide" Ferreira, a driver trying to finish one last chain of work for fixer Sable Ivers and get clear of the city.
 
-## The game
+The campaign follows six connected jobs. Early runs introduce the districts, the people who control them, and the risks of moving cargo under pressure. Later work escalates into armed confrontations, urgent escapes, and a final job aboard the *Sirena Queen*, the ferry casino whose departure gives the story its deadline.
 
-**Porto Sirena** is a rain-slick neon port city at dusk: the teal-and-rust
-Harborfront, the magenta Velvet Row nightclub strip, the amber Cannery Yards
-and the green hills of Alto Verde. You are **Nico "Tide" Ferreira**, a
-smuggler's wheelman pulled back for one last chain of six jobs — *The Neon
-Tide* — for fixer **Sable Ivers**, ending in a heist on the casino ferry
-*Sirena Queen*.
+## What is in the game
 
-Steal cars, run jobs, outrun the heat — the hotter you are, the bigger the
-payout.
+- A compact open city with traffic, pedestrians, landmarks, changing objectives, and four districts with their own visual identities.
+- A dense, always-visible HUD showing cash, respect rank and progress, district standing, mission title, live objective distance, wanted stars, heat, time, weather, health, armor, and a detailed minimap.
+- Context-sensitive driving and on-foot panels: speed, gear, nitro, vehicle condition, current weapon, ammunition, interaction prompts, subtitles, payout messages, and damage feedback.
+- A wanted system in which police pressure rises with criminal activity, pursuers escalate, roadblocks and spike strips appear at higher levels, and staying unseen lets the heat fall.
+- Stealable cars, arcade driving, nitro, handbrake turns, collisions, vehicle damage, and persistent wrecks.
+- Garage upgrades for engine performance, armor, and nitro, purchased with money earned in the city.
+- The Harborfront Sprint, a checkpoint race against rival drivers with its own position, checkpoint, timer, and countdown display.
+- Six missions with dialogue, staged objectives, timed driving, shootouts, escapes, and payouts that grow when a job is completed under greater police pressure.
+- Progress stored locally, including cash, respect, district standing, upgrades, mission progress, race results, and the player's last position.
 
-### What's in the world
+## Run it locally
 
-- **On foot and behind the wheel** — third-person exploration, drivable cars
-  with a chase camera, handbrake drifts, and car theft (`E` next to a car).
-- **A living city** — AI traffic on the roads, pedestrians on the sidewalks,
-  a procedural road grid with landmarks: the Sirena Queen ferry casino, the
-  lighthouse, the Velvet Row arch and the cannery cranes.
-- **Wanted system** — 1–5 stars; police pursue and ram, and at higher levels
-  set roadblocks with spike strips. Break line of sight and hide to cool off.
-- **Six-mission story chain** — markers, dialogue beats and HUD objectives,
-  with payouts that scale with your wanted level.
-- **Combat** — melee (`F`) and shooting (mouse) with a weapon wheel:
-  fists, pistol, SMG. Armed enemies guard the later jobs.
-- **Garage** — spend earnings on engine, armor and nitro upgrades that
-  persist between sessions.
-- **Respect** — ranks and per-district standing unlock jobs and raise
-  payouts.
-- **Street races** — checkpoint-ring races against AI drivers, with position
-  and timer on the HUD.
-- **HUD + minimap** — wanted stars, cash, health and the mission marker on a
-  2D canvas minimap; start screen, pause menu, and progress saved in
-  `localStorage`.
-- **Polish** — synthesized WebAudio (engine, sirens, gunshots, rain, a music
-  loop), rain and spark particles, headlights, and wet-street neon glow.
+You need Node.js 22 or newer. From the repository root, start the small static server:
 
-### Controls
-
-| Input | Action |
-| --- | --- |
-| `W A S D` / arrows | Move / drive |
-| `E` | Steal or enter a car |
-| `F` | Melee |
-| Mouse | Aim, click to shoot |
-| `Q` | Weapon wheel |
-| `Shift` | Sprint / boost |
-| `Esc` | Pause |
-
-## Run it
-
-Hand the entry in (copies `game/` + `screenshots/` to the output directory
-and writes `dossier.json`):
-
-```sh
-mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+```bash
+node serve.ts --port 8080
 ```
 
-Play it locally:
+Then open <http://localhost:8080> in a desktop browser.
 
-```sh
-node serve.ts   # serves game/ at http://localhost:8080
-```
+The server only serves the files in `game/`; the game itself is static and uses the vendored Three.js copy in this repository. No package installation or build step is required.
 
-Deterministic screenshot scenes for the four shots in `screenshots/` are
-staged by `game/src/shots.js` — open `index.html?shot=1` … `?shot=4`.
+## Controls
 
-## Layout
+- **W A S D / arrow keys** — move on foot or drive
+- **Mouse** — move the camera; hold the left mouse button to shoot while on foot
+- **E** — steal or enter a nearby car, exit a car, interact, use the garage, or start the race when prompted
+- **F** — melee attack
+- **Shift** — sprint on foot or use nitro while driving
+- **Space** — handbrake
+- **Q** — hold for the weapon wheel
+- **1, 2, 3** — select a weapon; in the garage, buy the matching upgrade
+- **G** — open the garage panel when nearby
+- **P** — pause
 
-- `main.ts` — the hand-in program (Node standard library only).
-- `serve.ts` — a tiny static server for playing locally.
-- `game/index.html` — the page; loads three.js from `game/vendor/`.
-- `game/src/` — the game itself, one job per file: `city`, `vehicles`,
-  `traffic`, `pedestrians`, `police`, `missions`, `combat`, `hud`, `audio`,
-  `save`, `input`, `shots`, and `main` for the loop and state.
-- `screenshots/` — four real renders of the running game; the first is the
-  cover.
+## Entry structure
 
-MIT licensed — see `LICENSE`.
+- `game/` contains the playable static game.
+- `main.ts` prepares the make.fun output and writes the dossier from the submitted game and screenshots.
+- `serve.ts` is the local development server.
+- `screenshots/` contains the four submitted gameplay captures.
+- `shots.json` maps each capture to its deterministic screenshot scene.

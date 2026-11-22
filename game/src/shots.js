@@ -1,66 +1,102 @@
-// shots.js — deterministic screenshot scenes. ?shot=1..4 poses the running
-// game (real simulation, real HUD) so the maker's screenshots are reproducible:
-// the same seed builds the same city, and each shot places Nico, cars, police
-// and the objective exactly where the cover needs them.
+// shots.js — deterministic screenshot scenes for NEON TIDE (?shot=1..4).
+// Each scene places the player, cars, police and HUD state so the render
+// shows the whole game at once: full dense HUD, an active objective, the
+// minimap alive with blips. main.js renders a few dozen frames of the scene
+// and flags window.__shotReady for the camera script.
 
-import { makeCar } from './vehicles.js';
+import * as THREE from 'three';
 
-export function applyShot(G, n) {
-  const P = G.player;
-  const put = (x, z, heading) => {
-    P.group.position.set(x, G.city.groundHeight(x, z), z);
-    P.heading = heading;
-  };
+function base(G, { cash, respect, clock }) {
+  G.state.cash = cash;
+  G.state.respect = respect;
+  G.progress.standing = { harbor: 4, velvet: 3, cannery: 2, alto: 2 };
+  G.setClock(clock[0], clock[1]);
+  G.state.health = 92;
+  G.state.armor = 55;
+}
+
+function foot(G, x, z, heading) {
+  G.player.pos.set(x, 0, z);
+  G.player.heading = heading;
+  G.player.mesh.position.set(x, 0, z);
+  G.player.mesh.rotation.y = heading;
+  G.player.mesh.visible = true;
+}
+
+export function setupShot(n, G) {
   if (n === 1) {
-    // COVER: a rainy chase up the Harborfront road, roadblock ahead.
-    G.setMood('dusk'); G.rain.visible = true;
-    const car = makeCar('sport', 0xc23b4e, -26, 118, Math.PI);
-    car.driver = 'player'; car.playerDriven = true;
-    G.scene.add(car.group); G.cars.push(car);
-    P.inCar = car; P.group.visible = false;
-    car.speed = 16;
-    put(-26, 118, Math.PI);
-    for (const [dx, dz] of [[-2.5, 12], [3, 20]]) {
-      const cop = makeCar('cop', 0xf2f2f5, -26 + dx, 118 + dz, Math.PI);
-      cop.driver = 'police'; cop.speed = 15;
-      G.scene.add(cop.group); G.cars.push(cop); G.police.cars.push(cop);
-    }
-    G.police.heat = 3.3; G.wanted = 3;
-    G.police.lastKnown = { x: -26, z: 118 };
-    G.police.setRoadblock(G);
-    // Pull the roadblock into the cover frame (it spawns 46 ahead).
-    const block = G.police.blocks[G.police.blocks.length - 1];
-    if (block) {
-      block.group.position.z += 18;
-      block.stripPos.z += 18;
-      for (const c of block.cars) c.group.position.z += 18;
-    }
-    G.hud.setObjective('<b>THE SIRENA JOB</b> — Lose the heat, or don’t. They pay more when you’re hot.');
-    G.shotDrive = true; // main.js keeps the car rolling so the chase is alive
-  } else if (n === 2) {
-    // Car theft on Velvet Row at night, neon everywhere.
-    G.setMood('night'); G.rain.visible = false;
-    const car = makeCar('sport', 0xf2b134, 77, 49, -0.5);
-    car.driver = 'parked';
-    G.scene.add(car.group); G.cars.push(car);
-    put(81, 45, -0.8);
-    G.hud.showPrompt('<b>E</b> — STEAL THE VANTARA GT');
-    G.hud.setObjective('<b>HOT WHEELS</b> — Steal the Vantara GT · 3m');
-  } else if (n === 3) {
-    // The mission beat: Sable, the ferry, the job.
-    G.setMood('dusk'); G.rain.visible = true;
-    put(20, 143, 0.3);
-    G.missions.marker = { x: 30, z: 178 };
-    G.hud.setObjective('<b>THE SIRENA JOB</b> — Board the Sirena Queen · 38m');
-    G.hud.showDialogue('SABLE IVERS', 'The Sirena Queen sails at midnight, Nico. The vault case is on her deck — board her, crack it, and do not get caught holding it.', 60);
-  } else if (n === 4) {
-    // On foot in Harborfront at dusk: people, traffic, lighthouse, cranes.
-    G.setMood('dusk'); G.rain.visible = true;
-    put(-36, 124, -0.85);
-    // Guarantee harbour life in frame: three locals on the dock road.
-    const spots = [[-44, 127], [-30, 128], [-48, 124]];
-    G.peds.slice(0, 3).forEach((ped, i) => ped.mesh.position.set(spots[i][0], 0.3, spots[i][1]));
-    G.hud.setObjective('<b>FIRST RUN</b> — Pick up the package behind Club Lumen · 190m');
+    // COVER: four-star chase in the rain, roadblock ahead on the harbor run.
+    base(G, { cash: 4850, respect: 860, clock: [19, 12] });
+    const car = G.createCarAt(4, 44.5, 236, Math.PI, 'civilian');
+    car.speed = 32;
+    G.setPlayerCar(car);
+    G.police.addUnit(41, 250, Math.PI);
+    G.police.addUnit(48, 260, Math.PI);
+    G.police.addRoadblockAt(40, 192, true);
+    G.setWanted(4);
+    G.missions.index = 0;
+    G.missions.state = 'active';
+    G.missions.stage = 0;
+    return {
+      camPos: new THREE.Vector3(34.5, 4.4, 250),
+      camTarget: new THREE.Vector3(44, 1.5, 204),
+      hud: {
+        context: { mode: 'drive', vehicleName: 'Sable GT', speedKmh: 118, gear: '4', nitro: 52, nitroOn: true, vehHealth: 81 },
+      },
+    };
   }
-  G.hud.update(G);
+
+  if (n === 2) {
+    // Car theft on Velvet Row: Nico beside a Sable GT, prompt up, pistol out.
+    base(G, { cash: 1320, respect: 430, clock: [21, 5] });
+    G.createCarAt(4, -192.4, 66, 0, 'civilian');
+    foot(G, -195.6, 68.5, -Math.PI / 2);
+    G.combat.weaponIndex = 1;
+    G.setWanted(2);
+    G.missions.index = 0;
+    G.missions.state = 'active';
+    G.missions.stage = 1;
+    return {
+      camPos: new THREE.Vector3(-187.5, 2.3, 75),
+      camTarget: new THREE.Vector3(-195, 1.1, 67.5),
+      hud: { prompt: 'E — STEAL CAR' },
+    };
+  }
+
+  if (n === 3) {
+    // Mission beat on the dock: Sable's subtitle, the Sirena Queen ahead.
+    base(G, { cash: 12340, respect: 2450, clock: [18, 52] });
+    foot(G, 26, 322, 0.3);
+    G.combat.spawnEnemy(16, 346);
+    G.combat.spawnEnemy(60, 350);
+    G.setWanted(2);
+    G.missions.index = 5;
+    G.missions.state = 'active';
+    G.missions.stage = 0;
+    return {
+      camPos: new THREE.Vector3(16, 3.0, 312),
+      camTarget: new THREE.Vector3(34, 2.5, 352),
+      hud: {},
+      subtitle: ['Sable Ivers', 'The Queen sails at dawn, Nico. Vault first, questions never.'],
+    };
+  }
+
+  // shot 4 — the Harborfront Sprint: race HUD up, lighthouse down the bay.
+  base(G, { cash: 6120, respect: 1500, clock: [18, 47] });
+  const car = G.createCarAt(4, 296, 284.5, Math.PI / 2, 'civilian');
+  car.speed = 27;
+  G.setPlayerCar(car);
+  G.createCarAt(0, 332, 284.5, Math.PI / 2, 'civilian');
+  G.createCarAt(1, 258, 284.5, Math.PI / 2, 'civilian');
+  G.setWanted(0);
+  return {
+    camPos: new THREE.Vector3(276, 5.2, 306),
+    camTarget: new THREE.Vector3(306, 1.2, 283),
+    hud: {
+      objectiveHtml: 'Hit the next checkpoint — <b>38 m</b>',
+      missionTitle: 'HARBORFRONT SPRINT',
+      context: { mode: 'drive', vehicleName: 'Sable GT', speedKmh: 96, gear: '4', nitro: 68, nitroOn: false, vehHealth: 92 },
+    },
+    race: { pos: 2, total: 4, lap: 1, cp: 3, cpTotal: 8, cpLeft: 14, time: 47.2 },
+  };
 }

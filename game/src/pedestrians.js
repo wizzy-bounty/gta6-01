@@ -1,104 +1,115 @@
-// pedestrians.js — the people of Porto Sirena: capsule figures with a swinging
-// walk who stroll the sidewalk loop around their block, hurry away from gunfire
-// and reckless driving, and fall when hit (which the police notice).
+// pedestrians.js — the people of Porto Sirena: capsule citizens who stroll
+// the sidewalks, cross at intersections and scatter when a car comes at
+// them. Also builds the character mesh used by the player and by enemies.
 
 import * as THREE from 'three';
+import { STREET_COORDS } from './city.js';
 
-const CENTERS = [-104, -52, 0, 52, 104];
-const COATS = [0xd8d8de, 0x3b7dc2, 0xc23b4e, 0x53c24a, 0xe0a52e, 0xf06bd8, 0x2ea8a0, 0x8a5fd0];
-const SKIN = [0xe8b98d, 0xc98a5a, 0x8a5a34, 0x6e4226, 0xf2cda7];
+const SHIRTS = ['#d95f43', '#43a8d9', '#d9c243', '#7dd95f', '#b05fd9', '#e8e8ec', '#d9578a', '#5fd9c2'];
+const SKINS = ['#e8b48c', '#c98a5a', '#8a5a34', '#f0c8a0', '#6e4525'];
 
-export function makePerson(coat, skin) {
-  const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ color: coat, roughness: 0.9 });
-  const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.7 });
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.75, 0.24), new THREE.MeshStandardMaterial({ color: 0x23232e, roughness: 1 }));
-  legL.position.set(-0.14, 0.38, 0); g.add(legL);
-  const legR = legL.clone(); legR.position.x = 0.14; g.add(legR);
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.72, 0.3), mat);
-  torso.position.y = 1.1; g.add(torso);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 10, 10), skinMat);
-  head.position.y = 1.68; g.add(head);
-  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.62, 0.18), mat);
-  armL.position.set(-0.38, 1.08, 0); g.add(armL);
-  const armR = armL.clone(); armR.position.x = 0.38; g.add(armR);
-  g.userData.parts = { legL, legR, armL, armR };
-  return g;
+export function makePersonMesh(shirt = '#d95f43', skin = '#e8b48c', pants = '#2c3242') {
+  const group = new THREE.Group();
+  const shirtMat = new THREE.MeshStandardMaterial({ color: shirt, roughness: 0.9 });
+  const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.8 });
+  const pantsMat = new THREE.MeshStandardMaterial({ color: pants, roughness: 0.95 });
+
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.5, 3, 8), shirtMat);
+  torso.position.y = 1.06; group.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.155, 10, 10), skinMat);
+  head.position.y = 1.62; group.add(head);
+  const legs = [];
+  for (const sx of [-0.09, 0.09]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.62, 0.15), pantsMat);
+    leg.geometry.translate(0, -0.31, 0);
+    leg.position.set(sx, 0.66, 0);
+    group.add(leg); legs.push(leg);
+  }
+  const arms = [];
+  for (const sx of [-0.29, 0.29]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.55, 0.11), shirtMat);
+    arm.geometry.translate(0, -0.24, 0);
+    arm.position.set(sx, 1.32, 0);
+    group.add(arm); arms.push(arm);
+  }
+  group.userData.legs = legs;
+  group.userData.arms = arms;
+  return group;
 }
 
-export class Pedestrians {
-  constructor(scene, city, rng, G) {
+export function animatePerson(mesh, walkPhase, runFactor = 1) {
+  const swing = Math.sin(walkPhase) * 0.55 * runFactor;
+  const [l1, l2] = mesh.userData.legs;
+  const [a1, a2] = mesh.userData.arms;
+  if (l1) { l1.rotation.x = swing; l2.rotation.x = -swing; }
+  if (a1) { a1.rotation.x = -swing * 0.8; a2.rotation.x = swing * 0.8; }
+  mesh.position.y = Math.abs(Math.sin(walkPhase)) * 0.045 * runFactor;
+}
+
+export class PedestrianManager {
+  constructor(scene, rng) {
+    this.scene = scene;
+    this.rng = rng;
     this.peds = [];
-    let n = 0;
-    for (const cx of CENTERS) for (const cz of CENTERS) {
-      const count = cz === 104 ? 1 : 2;
-      for (let i = 0; i < count && n < 34; i++, n++) {
-        const loop = city.blockLoop(cx, cz, -5.4);
-        const mesh = makePerson(COATS[(n * 5) % COATS.length], SKIN[(n * 3) % SKIN.length]);
-        const start = loop[n % 4];
-        mesh.position.set(start.x, 0.3, start.z);
-        scene.add(mesh);
-        this.peds.push({
-          mesh, loop, wp: (n + 1) % 4, speed: 1.1 + rng() * 0.7, phase: rng() * 6,
-          health: 100, dead: false, panic: 0, heading: 0,
-        });
-      }
-    }
-    G.peds = this.peds;
+    for (let i = 0; i < 20; i++) this.#spawn();
   }
 
-  update(dt, G) {
-    const pp = G.player.group.position;
+  #spawn() {
+    const axis = this.rng() > 0.5 ? 'v' : 'h';
+    const street = STREET_COORDS[Math.floor(this.rng() * STREET_COORDS.length)];
+    const side = this.rng() > 0.5 ? 11.6 : -11.6;
+    const dir = this.rng() > 0.5 ? 1 : -1;
+    const along = -380 + this.rng() * 700;
+    const mesh = makePersonMesh(
+      SHIRTS[Math.floor(this.rng() * SHIRTS.length)],
+      SKINS[Math.floor(this.rng() * SKINS.length)],
+    );
+    this.scene.add(mesh);
+    this.peds.push({
+      mesh, axis, street, side, dir,
+      x: axis === 'v' ? street + side : along,
+      z: axis === 'v' ? along : street + side,
+      speed: 1.1 + this.rng() * 1.1,
+      phase: this.rng() * 6,
+      flee: 0, fleeX: 0, fleeZ: 0,
+    });
+  }
+
+  update(dt, threat) {
     for (const ped of this.peds) {
-      if (ped.dead) continue;
-      const pos = ped.mesh.position;
-      const wp = ped.loop[ped.wp];
-      let tx = wp.x, tz = wp.z;
-      // panic: run directly away from the threat for a few seconds
-      if (ped.panic > 0) {
-        ped.panic -= dt;
-        tx = pos.x + (pos.x - pp.x); tz = pos.z + (pos.z - pp.z);
-      }
-      const dx = tx - pos.x, dz = tz - pos.z, d = Math.hypot(dx, dz);
-      if (d < 1.2 && ped.panic <= 0) ped.wp = (ped.wp + 1) % ped.loop.length;
-      const sp = ped.panic > 0 ? 4.6 : ped.speed;
-      if (d > 0.05) {
-        ped.heading = Math.atan2(dx, dz);
-        pos.x += Math.sin(ped.heading) * sp * dt;
-        pos.z += Math.cos(ped.heading) * sp * dt;
-      }
-      G.city.collide(pos, 0.45);
-      pos.y = 0.3 + G.city.groundHeight(pos.x, pos.z);
-      ped.mesh.rotation.y = ped.heading;
-      ped.phase += dt * (ped.panic > 0 ? 13 : 7);
-      const u = ped.mesh.userData.parts;
-      const swing = Math.sin(ped.phase) * 0.5;
-      u.legL.rotation.x = swing; u.legR.rotation.x = -swing;
-      u.armL.rotation.x = -swing * 0.7; u.armR.rotation.x = swing * 0.7;
-      // run down by a car?
-      for (const car of G.cars) {
-        if (car.dead || Math.abs(car.speed) < 4) continue;
-        const cp = car.group.position;
-        if (Math.abs(cp.x - pos.x) < 1.5 && Math.abs(cp.z - pos.z) < 2.2) {
-          this.knockDown(ped, G, car.playerDriven || car === G.player.inCar);
-          break;
+      // scatter from a fast-approaching car
+      if (threat) {
+        const dx = ped.x - threat.x, dz = ped.z - threat.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 6.5 && threat.speed > 7) {
+          ped.flee = 1.4;
+          ped.fleeX = dx / (d || 1); ped.fleeZ = dz / (d || 1);
         }
       }
-      // frightened by nearby gunfire / a wanted player sprinting past
-      if (G.combat?.shotsFiredAt && G.time - G.combat.shotsFiredAt < 0.4) {
-        if (pos.distanceTo(pp) < 17) ped.panic = 3;
+      let vx = 0, vz = 0;
+      if (ped.flee > 0) {
+        ped.flee -= dt;
+        vx = ped.fleeX * 4.6; vz = ped.fleeZ * 4.6;
+        ped.phase += dt * 11;
+      } else {
+        if (ped.axis === 'v') vz = ped.dir * ped.speed; else vx = ped.dir * ped.speed;
+        ped.phase += dt * 5.4;
+        const along = ped.axis === 'v' ? ped.z : ped.x;
+        if (along > 385) ped.dir = -1;
+        if (along < -395) ped.dir = 1;
+        // sometimes cross to the opposite sidewalk at an intersection
+        const near = STREET_COORDS.some(c => Math.abs((ped.axis === 'v' ? ped.x : ped.z) - 0) < 999 && Math.abs(along - c) < 0.4);
+        if (near && this.rng() > 0.996) ped.side *= -1;
+        if (ped.axis === 'v') ped.x += (ped.street + ped.side - ped.x) * dt * 2;
+        else ped.z += (ped.street + ped.side - ped.z) * dt * 2;
       }
-    }
-  }
-
-  knockDown(ped, G, byPlayer) {
-    if (ped.dead) return;
-    ped.dead = true; ped.health = 0;
-    ped.mesh.rotation.x = -Math.PI / 2;
-    ped.mesh.position.y = 0.45;
-    if (byPlayer) {
-      G.police?.addCrime(1.2, ped.mesh.position);
-      G.hud?.toast('YOU HIT A PEDESTRIAN');
+      ped.x += vx * dt; ped.z += vz * dt;
+      ped.z = Math.min(344, ped.z);
+      ped.x = Math.max(-420, Math.min(420, ped.x));
+      ped.mesh.position.set(ped.x, 0, ped.z);
+      const heading = Math.atan2(vx || (ped.axis === 'h' ? ped.dir : 0), vz || (ped.axis === 'v' ? ped.dir : 0));
+      ped.mesh.rotation.y = heading;
+      animatePerson(ped.mesh, ped.phase, ped.flee > 0 ? 1.5 : 1);
     }
   }
 }
