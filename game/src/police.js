@@ -1,157 +1,128 @@
-// police.js — the Porto Sirena Port Authority: interceptors that spawn
-// with the wanted level, pursue and ram the player, and — at four stars and
-// up — park roadblocks with spike strips across the street ahead.
+// NEON TIDE — the law: wanted stars + heat, pursuit cars that chase and
+// ram, roadblocks with spike strips at high heat, and the bust meter when
+// a unit pins Nico. Wanted decays only when every unit loses sight of him.
 
-import * as THREE from 'three';
-import { STREET_COORDS, ROAD_HALF } from './city.js';
-import { createCar, driveAI, syncCarMesh } from './vehicles.js';
+import { clamp, angleDelta, dist } from './random.js';
+import { makeCar, stepCar, damageCar } from './vehicles.js';
 
-const SPIKE_DAMAGE = 26;
+export const wanted = {
+  stars: 0,       // 0..5
+  heat: 0,        // 0..100 inside the current star band
+  unseenFor: 0,   // seconds since any unit saw the player
+  bust: 0,        // 0..100 pin meter
+};
 
-export class PoliceManager {
-  constructor(scene) {
-    this.scene = scene;
-    this.units = [];       // police cars in play
-    this.roadblocks = [];  // { x, z, axis, cars:[], spikes: mesh, spent }
-    this.wanted = 0;
-    this.blockTimer = 0;
-  }
+export function addHeat(amount) {
+  wanted.heat += amount;
+  while (wanted.heat >= 100 && wanted.stars < 5) { wanted.heat -= 100; wanted.stars++; }
+  if (wanted.stars >= 5) wanted.heat = Math.min(100, wanted.heat);
+  if (wanted.stars === 0 && wanted.heat > 25) wanted.stars = 1;
+}
 
-  desiredUnits(wanted) {
-    return [0, 1, 2, 3, 4, 5][wanted] || 0;
-  }
-
-  #spawnUnit(playerPos) {
-    const angle = Math.random() * Math.PI * 2;
-    const dist = 65 + Math.random() * 30;
-    const x = Math.max(-410, Math.min(410, playerPos.x + Math.sin(angle) * dist));
-    const z = Math.max(-410, Math.min(330, playerPos.z + Math.cos(angle) * dist));
-    const car = createCar(this.scene, 5, x, z, Math.atan2(playerPos.x - x, playerPos.z - z), 'police');
-    this.units.push(car);
-    return car;
-  }
-
-  #despawnUnit(car) {
-    this.scene.remove(car.mesh);
-    this.units = this.units.filter(u => u !== car);
-  }
-
-  // A roadblock: two interceptors parked across the street nearest ahead of
-  // the player, with a spike strip between them.
-  #buildRoadblock(playerPos, playerHeading) {
-    const aheadX = playerPos.x + Math.sin(playerHeading) * 55;
-    const aheadZ = playerPos.z + Math.cos(playerHeading) * 55;
-    // snap to the nearest street line
-    const snapV = STREET_COORDS.reduce((b, c) => (Math.abs(c - aheadX) < Math.abs(b - aheadX) ? c : b));
-    const snapH = STREET_COORDS.reduce((b, c) => (Math.abs(c - aheadZ) < Math.abs(b - aheadZ) ? c : b));
-    const vertical = Math.abs(snapV - aheadX) < Math.abs(snapH - aheadZ);
-    const x = vertical ? snapV : aheadX;
-    const z = vertical ? aheadZ : snapH;
-    if (z > 330) return;
-    this.#placeRoadblock(x, z, vertical);
-  }
-
-  #placeRoadblock(x, z, vertical) {
-    const cars = [];
-    for (const off of [-4.6, 4.6]) {
-      const car = createCar(this.scene, 5,
-        vertical ? x + off : x, vertical ? z : z + off,
-        vertical ? Math.PI / 2 : 0, 'police');
-      car.parked = true;
-      cars.push(car);
-      this.units.push(car);
+export function decayWanted(dt, anySeesPlayer) {
+  if (anySeesPlayer) { wanted.unseenFor = 0; return; }
+  wanted.unseenFor += dt;
+  if (wanted.unseenFor > 5 && wanted.stars > 0) {
+    wanted.heat -= 9 * dt;
+    if (wanted.heat <= 0) {
+      wanted.stars--;
+      wanted.heat = wanted.stars > 0 ? 70 : 0;
+      wanted.unseenFor = 2;
     }
-    const spikeMat = new THREE.MeshStandardMaterial({ color: '#3a3f47', roughness: 0.5, metalness: 0.7 });
-    const spikes = new THREE.Mesh(new THREE.BoxGeometry(vertical ? ROAD_HALF * 2 : 0.7, 0.16, vertical ? 0.7 : ROAD_HALF * 2), spikeMat);
-    spikes.position.set(x, 0.1, z);
-    const teeth = new THREE.Mesh(new THREE.BoxGeometry(vertical ? ROAD_HALF * 2 : 0.3, 0.3, vertical ? 0.3 : ROAD_HALF * 2),
-      new THREE.MeshStandardMaterial({ color: '#c8ccd4', emissive: '#666c78', emissiveIntensity: 0.6 }));
-    teeth.position.set(x, 0.24, z);
-    this.scene.add(spikes, teeth);
-    this.roadblocks.push({ x, z, vertical, cars, meshes: [spikes, teeth], spent: false });
   }
+}
 
-  #clearRoadblock(block) {
-    for (const car of block.cars) this.#despawnUnit(car);
-    for (const mesh of block.meshes) this.scene.remove(mesh);
-    this.roadblocks = this.roadblocks.filter(b => b !== block);
+export function clearWanted() { wanted.stars = 0; wanted.heat = 0; wanted.unseenFor = 0; wanted.bust = 0; }
+
+export function spawnPoliceUnit(x, y) {
+  const car = makeCar(1, x, y, 0, '#e8eef2');
+  car.police = true;
+  car.model = { ...car.model, name: 'Interceptor', top: 470, accel: 330 };
+  car.aggro = 0;
+  return car;
+}
+
+export function desiredPoliceCount() {
+  return wanted.stars === 0 ? 0 : Math.min(2 + wanted.stars, 7);
+}
+
+// Roadblocks: two parked interceptors across a road + a spike strip.
+export const roadblocks = [];
+
+export function maybePlaceRoadblock(player, rng) {
+  if (wanted.stars < 3 || roadblocks.length >= 2) return;
+  // ahead of the player's heading, on the road they are on
+  const ahead = 620;
+  const x = player.x + Math.cos(player.angle || 0) * ahead;
+  const y = player.y + Math.sin(player.angle || 0) * ahead;
+  const vertical = Math.abs(Math.sin(player.angle || 0)) < 0.5;
+  const a = spawnPoliceUnit(x - (vertical ? 26 : 0), y - (vertical ? 0 : 26));
+  const b = spawnPoliceUnit(x + (vertical ? 26 : 0), y + (vertical ? 0 : 26));
+  a.angle = b.angle = vertical ? 0 : Math.PI / 2;
+  a.parked = b.parked = true;
+  roadblocks.push({ x, y, cars: [a, b], spikes: { x, y, w: vertical ? 14 : 110, h: vertical ? 110 : 14 }, fresh: 30 });
+}
+
+export function updateRoadblocks(dt) {
+  for (let i = roadblocks.length - 1; i >= 0; i--) {
+    roadblocks[i].fresh -= dt;
+    if (roadblocks[i].fresh <= 0) roadblocks.splice(i, 1);
   }
+}
 
-  // Returns events for main.js: { rammed, spiked } this frame.
-  update(dt, wanted, player, colliders) {
-    const events = { rammed: 0, spiked: false };
-    this.wanted = wanted;
-    const want = this.desiredUnits(wanted);
-    const active = this.units.filter(u => !u.parked);
-    if (active.length < want) this.#spawnUnit(player.pos);
-    else if (active.length > want) {
-      const far = active.reduce((a, b) =>
-        (Math.hypot(a.x - player.pos.x, a.z - player.pos.z) > Math.hypot(b.x - player.pos.x, b.z - player.pos.z) ? a : b));
-      this.#despawnUnit(far);
+export function checkSpikes(car) {
+  for (const rb of roadblocks) {
+    const s = rb.spikes;
+    if (car.x > s.x - s.w / 2 && car.x < s.x + s.w / 2 && car.y > s.y - s.h / 2 && car.y < s.y + s.h / 2) {
+      if (Math.abs(car.speed) > 60) { car.speed *= 0.25; damageCar(car, 12); return true; }
     }
-
-    // pursuit: aim at a point just behind the player so hits land as rams
-    for (const car of this.units) {
-      if (car.parked) { syncCarMesh(car, 0); continue; }
-      if (car.dead) continue;
-      const dx = player.pos.x - car.x, dz = player.pos.z - car.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist > 240) { this.#despawnUnit(car); continue; }
-      const lead = player.inCar ? 0.35 : 0;
-      const tx = player.pos.x + (player.vel?.x || 0) * lead;
-      const tz = player.pos.z + (player.vel?.z || 0) * lead;
-      const speed = dist > 26 ? 45 : 30 + wanted * 2.4;
-      driveAI(car, Math.atan2(tx - car.x, tz - car.z), speed, dt, colliders);
-      if (car.crashSpeed > 13) { car.crashSpeed = 0; }
-      // ram contact with the player's car
-      if (player.inCar && dist < 3.4 && Math.hypot(car.vx, car.vz) > 6) {
-        events.rammed = Math.max(events.rammed, Math.hypot(car.vx, car.vz));
-      }
-      syncCarMesh(car, dt);
-    }
-
-    // roadblocks at 4+ stars, refreshed on a timer
-    this.blockTimer -= dt;
-    if (wanted >= 4 && this.roadblocks.length < 2 && this.blockTimer <= 0) {
-      this.#buildRoadblock(player.pos, player.heading);
-      this.blockTimer = 16;
-    }
-    if (wanted < 4) for (const b of [...this.roadblocks]) this.#clearRoadblock(b);
-    for (const block of this.roadblocks) {
-      if (block.spent) continue;
-      const near = Math.abs(player.pos.x - block.x) < (block.vertical ? 3 : ROAD_HALF)
-        && Math.abs(player.pos.z - block.z) < (block.vertical ? ROAD_HALF : 3);
-      if (near && player.inCar && !player.car.tiresPopped) {
-        block.spent = true;
-        events.spiked = true;
-      }
-    }
-    return events;
   }
+  return false;
+}
 
-  spikeDamage() { return SPIKE_DAMAGE; }
-
-  // Direct placement used by the deterministic screenshot scenes.
-  addUnit(x, z, heading, parked = false) {
-    const car = createCar(this.scene, 5, x, z, heading, 'police');
-    car.parked = parked;
-    this.units.push(car);
-    return car;
+export function updatePolice(units, player, dt, playerCar) {
+  let anySees = false;
+  const target = playerCar || player;
+  for (const u of units) {
+    const d = dist(u.x, u.y, target.x, target.y);
+    if (d < 560) anySees = true;
+    // aim at a point just behind the target's nose: pursuit, then ram
+    const lead = clamp(d / 300, 0, 1) * 60;
+    const tx = target.x + Math.cos(target.angle || 0) * lead * (target.speed ? Math.sign(target.speed) : 0);
+    const ty = target.y + Math.sin(target.angle || 0) * lead * (target.speed ? Math.sign(target.speed) : 0);
+    const want = Math.atan2(ty - u.y, tx - u.x);
+    const steer = clamp(angleDelta(u.angle, want) * 1.8, -1, 1);
+    const input = { throttle: 0, steer, brake: false, nitro: false };
+    if (d > 46) input.throttle = 1;
+    else if (d < 30) input.throttle = -0.5;
+    if (Math.abs(angleDelta(u.angle, want)) > 2.4) input.throttle = -0.7; // turned around: reverse out
+    if (wanted.stars >= 4 && d > 200) input.nitro = true;
+    stepCar(u, input, dt, null);
+    u.parked = false;
   }
-
-  addRoadblockAt(x, z, vertical) {
-    this.#placeRoadblock(x, z, vertical);
+  // bust meter: a unit stopped against a slow/on-foot player pins him
+  let pinning = false;
+  if (!playerCar || Math.abs(playerCar.speed) < 26) {
+    for (const u of units) if (dist(u.x, u.y, player.x, player.y) < 62) pinning = true;
   }
+  if (pinning && wanted.stars > 0) wanted.bust = Math.min(100, wanted.bust + 26 * dt);
+  else wanted.bust = Math.max(0, wanted.bust - 40 * dt);
+  return anySees;
+}
 
-  blips() {
-    return this.units.map(u => ({ x: u.x, z: u.z, kind: 'police' }));
+export function drawRoadblock(ctx, rb) {
+  const s = rb.spikes;
+  ctx.fillStyle = '#22282e';
+  ctx.fillRect(s.x - s.w / 2, s.y - s.h / 2, s.w, s.h);
+  ctx.fillStyle = '#cfd6dd';
+  const n = Math.floor((s.w > s.h ? s.w : s.h) / 12);
+  for (let i = 0; i < n; i++) {
+    const off = -((s.w > s.h ? s.w : s.h) / 2) + 6 + i * 12;
+    ctx.beginPath();
+    if (s.w > s.h) { ctx.moveTo(s.x + off, s.y - 5); ctx.lineTo(s.x + off + 4, s.y + 5); ctx.lineTo(s.x + off - 4, s.y + 5); }
+    else { ctx.moveTo(s.x - 5, s.y + off); ctx.lineTo(s.x + 5, s.y + off + 4); ctx.lineTo(s.x + 5, s.y + off - 4); }
+    ctx.fill();
   }
-
-  nearestDistance(playerPos) {
-    let best = Infinity;
-    for (const u of this.units) {
-      best = Math.min(best, Math.hypot(u.x - playerPos.x, u.z - playerPos.z));
-    }
-    return best;
-  }
+  ctx.font = '800 11px Arial'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffd23c';
+  ctx.fillText('SPIKES', s.x, s.y - s.h / 2 - 6);
 }

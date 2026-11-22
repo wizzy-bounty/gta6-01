@@ -1,228 +1,265 @@
-// missions.js — "The Neon Tide": Sable Ivers' six-job chain for Nico, plus
-// the Harborfront street race. Missions are small stage machines (go here,
-// drive this, clear them out, run) with dialogue beats, objective markers
-// and payouts that scale with the wanted level at completion.
+// NEON TIDE — "The Neon Tide": Sable Ivers' six-job chain for Nico Ferreira,
+// plus the Harborfront street race. Missions are stage lists; each stage is
+// a place to reach, a car to steal, a fight to win or the ferry to board.
+// Payouts scale with the wanted level at the moment the job closes — the
+// hotter you are, the bigger the payout.
+
+import { FERRY_POS, GARAGE_POS, RACE_START, districtAt } from './config.js';
+import { dist, clamp } from './random.js';
+import { combat, spawnEnemy } from './combat.js';
+import { wanted, addHeat, clearWanted } from './police.js';
+import { makeCar, stepCar } from './vehicles.js';
+import { angleDelta } from './random.js';
 
 export const MISSIONS = [
   {
-    title: 'First Tide',
-    start: { x: 40, z: 296 },
+    title: 'FIRST SPLASH',
     intro: [
-      ['Sable Ivers', 'Nico "Tide" Ferreira. I heard the bay spat you back out.'],
-      ['Nico', 'One chain of jobs, Sable. Then I am done with Porto Sirena.'],
-      ['Sable Ivers', 'Then drive like it. Velvet Row first — my singer never got her stage car back.'],
+      { speaker: 'SABLE IVERS', line: 'Nico "Tide" Ferreira. Five years gone and the harbor still owes you money.' },
+      { speaker: 'SABLE IVERS', line: 'A crate fell off a boat at the south pier. Bring it to me before the tide does.' },
+      { speaker: 'NICO', line: 'One crate. Then we talk about the Queen.' },
     ],
     stages: [
-      { type: 'drive', x: -200, z: 52, label: 'Reach Velvet Row' },
-      { type: 'goto', x: -196, z: 30, label: 'Meet the club manager' },
-      { type: 'drive', x: 282, z: 222, label: 'Bring word to the Cannery foreman' },
+      { kind: 'goto', x: 420, y: 2440, label: 'Reach the dropped crate at the south pier' },
+      { kind: 'goto', x: GARAGE_POS.x, y: GARAGE_POS.y + 90, label: 'Bring the crate to Tideworks Garage' },
     ],
-    outro: [['Sable Ivers', 'Clean. The tide still answers you, Nico.']],
-    basePay: 400,
+    basePay: 300, respect: 40,
   },
   {
-    title: 'Hot Cargo',
-    start: { x: 282, z: 222 },
+    title: 'HOT METAL',
     intro: [
-      ['Foreman Ruiz', 'Crates on the dock before the tide turns, Tide. Clock is running.'],
+      { speaker: 'SABLE IVERS', line: 'A Velvet Roadster on Velvet Row. Owner owes the house. The house wants the car.' },
+      { speaker: 'NICO', line: 'Steal it loud or steal it quiet?' },
+      { speaker: 'SABLE IVERS', line: 'You were never the quiet one, Tide.' },
     ],
     stages: [
-      { type: 'timed', x: 40, z: 330, label: 'Deliver the cargo to the harbor dock', seconds: 80 },
+      { kind: 'steal', x: 3160, y: 1900, label: 'Steal the Velvet Roadster on Velvet Row', modelIdx: 4 },
+      { kind: 'deliver', x: GARAGE_POS.x, y: GARAGE_POS.y + 90, label: 'Deliver the Roadster to Tideworks Garage' },
     ],
-    outro: [['Sable Ivers', 'Ruiz is smiling. That never happens.']],
-    basePay: 650,
+    basePay: 520, respect: 55,
   },
   {
-    title: 'Velvet Static',
-    start: { x: -200, z: 52 },
+    title: 'SIRENA STATIC',
     intro: [
-      ['Sable Ivers', 'A crew is leaning on my clubs. Clear the alley behind Velvet Row.'],
-      ['Nico', 'And when the Authority comes?'],
-      ['Sable Ivers', 'You run north. Alto Verde sleeps through anything.'],
+      { speaker: 'SABLE IVERS', line: 'Three relay masts carry the Queen\'s security feed. Visit each one. Fast.' },
+      { speaker: 'SABLE IVERS', line: 'The harbor patrol will notice. That is rather the point — I need them looking at you.' },
     ],
     stages: [
-      { type: 'shootout', x: -280, z: -80, label: 'Clear the alley crew', count: 3 },
-      { type: 'escape', x: 0, z: -196, label: 'Lose the heat in Alto Verde', minWanted: 2 },
+      { kind: 'goto', x: 840, y: 700, label: 'Tag the Cannery Yards relay mast', heat: 30 },
+      { kind: 'goto', x: 3300, y: 620, label: 'Tag the Alto Verde relay mast', heat: 30 },
+      { kind: 'goto', x: 2500, y: 1560, label: 'Tag the Velvet Row relay mast', heat: 30 },
+      { kind: 'goto', x: GARAGE_POS.x, y: GARAGE_POS.y + 90, label: 'Report back to Tideworks Garage' },
     ],
-    outro: [['Sable Ivers', 'The Row breathes again. So do I.']],
-    basePay: 900,
+    basePay: 700, respect: 70,
   },
   {
-    title: 'Crane Money',
-    start: { x: 296, z: 160 },
+    title: 'CANNERY RUN',
     intro: [
-      ['Foreman Ruiz', 'Payroll sits under my crane and the night crew wants it. Hold the yard.'],
+      { speaker: 'SABLE IVERS', line: 'A Dockmaster Van in the Cannery Yards is loaded with bonded rum. Alto Verde is thirsty.' },
+      { speaker: 'NICO', line: 'And the collectors at the drop?' },
+      { speaker: 'SABLE IVERS', line: 'Persuade them. You have such a way with people.' },
     ],
     stages: [
-      { type: 'shootout', x: 280, z: 210, label: 'Hold the crane yard', count: 4 },
-      { type: 'drive', x: -100, z: 160, label: 'Take the payroll to the garage' },
+      { kind: 'steal', x: 900, y: 900, label: 'Take the loaded Dockmaster Van', modelIdx: 3 },
+      { kind: 'deliver', x: 3500, y: 800, label: 'Deliver the van to the Alto Verde drop' },
+      { kind: 'fight', x: 3500, y: 800, label: 'Deal with the collectors', count: 2 },
     ],
-    outro: [['Nico', 'Payroll delivered. Ruiz owes the garage a paint job.']],
-    basePay: 1200,
+    basePay: 950, respect: 85,
   },
   {
-    title: 'The Long Sirena',
-    start: { x: 0, z: -196 },
+    title: 'VELVET DEBT',
     intro: [
-      ['Sable Ivers', 'Every light in this city will be looking for you. Get to my dock anyway.'],
+      { speaker: 'SABLE IVERS', line: 'Three of Oro\'s collectors are shaking down my clubs on Velvet Row tonight.' },
+      { speaker: 'SABLE IVERS', line: 'End the shakedown. The Queen sails in two days, and I need the Row quiet.' },
     ],
     stages: [
-      { type: 'escape', x: 40, z: 330, label: 'Cross the city to the harbor dock', minWanted: 3 },
+      { kind: 'goto', x: 3050, y: 2150, label: 'Reach Club Onyx on Velvet Row' },
+      { kind: 'fight', x: 3050, y: 2150, label: 'Drive off Oro\'s collectors', count: 3 },
+      { kind: 'goto', x: GARAGE_POS.x, y: GARAGE_POS.y + 90, label: 'Report back to Tideworks Garage' },
     ],
-    outro: [['Sable Ivers', 'You beautiful storm. One job left — the Queen herself.']],
-    basePay: 1600,
+    basePay: 1200, respect: 100,
   },
   {
-    title: "Queen's Tide",
-    start: { x: 40, z: 330 },
+    title: 'THE SIRENA QUEEN',
     intro: [
-      ['Sable Ivers', 'The Sirena Queen sails at dawn with a vault full of other people\'s money.'],
-      ['Nico', 'Board her, clear the dock crew, and the tide goes out rich.'],
+      { speaker: 'SABLE IVERS', line: 'Tonight. The Queen\'s vault holds the harbor\'s whole season. Board her, crack it, vanish.' },
+      { speaker: 'NICO', line: 'And if the tide turns?' },
+      { speaker: 'SABLE IVERS', line: 'You ARE the tide, Nico.' },
     ],
     stages: [
-      { type: 'goto', x: 40, z: 368, label: 'Board the Sirena Queen' },
-      { type: 'shootout', x: 24, z: 344, label: 'Clear the dock crew', count: 5 },
-      { type: 'goto', x: 40, z: 380, label: 'Reach the gangway with the take' },
+      { kind: 'goto', x: FERRY_POS.x - 260, y: FERRY_POS.y - 130, label: 'Reach the Sirena Queen\'s pier' },
+      { kind: 'board', x: FERRY_POS.x, y: FERRY_POS.y, label: 'Board the Sirena Queen' },
+      { kind: 'vault', x: FERRY_POS.x + 130, y: FERRY_POS.y, label: 'Crack the vault (hold E)', heat: 55 },
+      { kind: 'escape', x: GARAGE_POS.x, y: GARAGE_POS.y + 90, label: 'Vanish — lose the heat and reach Tideworks' },
     ],
-    outro: [['Sable Ivers', 'It is done, Nico. Porto Sirena is ours — and you are free of it.']],
-    basePay: 3000,
+    basePay: 2600, respect: 200,
   },
 ];
 
-export class MissionManager {
-  // hooks: { subtitle(speaker, text), toast(amt, sub), crime(level), setWanted(n) }
-  constructor(marker, hooks) {
-    this.marker = marker;
-    this.hooks = hooks;
-    this.index = 0;            // next mission to offer
-    this.state = 'idle';       // idle | active | done
-    this.stage = 0;
-    this.stageTimer = 0;
-    this.dialogue = [];        // queued { speaker, text, t }
-    this.spawnedForStage = -1;
+export function startMission(state, idx) {
+  const def = MISSIONS[idx];
+  state.mission = { idx, stage: 0, def, stageCar: null, fightSpawned: false, crackTime: 0 };
+  state.dialogue = def.intro.map((d) => ({ ...d }));
+  state.dialogueT = 0;
+  prepareStage(state);
+}
+
+function prepareStage(state) {
+  const m = state.mission;
+  if (!m) return;
+  const stage = m.def.stages[m.stage];
+  m.fightSpawned = false;
+  m.crackTime = 0;
+  if (stage.kind === 'steal') {
+    // the target car waits at the marker, freshly spawned for this job
+    const car = makeCar(stage.modelIdx, stage.x, stage.y, Math.PI / 2);
+    car.parked = true;
+    car.missionTarget = true;
+    state.trafficCars.push(car);
+    m.stageCar = car;
   }
-
-  mission() { return MISSIONS[this.index] || null; }
-  stageDef() {
-    const m = this.mission();
-    return m ? m.stages[this.stage] : null;
-  }
-
-  objective() {
-    if (this.state === 'idle') {
-      const m = this.mission();
-      return m ? { label: `Meet Sable's contact — ${m.title}`, x: m.start.x, z: m.start.z } : null;
+  if (stage.kind === 'fight') {
+    for (let i = 0; i < (stage.count || 2); i++) {
+      spawnEnemy(stage.x + (i - 1) * 56, stage.y + (i % 2 ? 34 : -30), 'Oro Collector');
     }
-    if (this.state === 'active') {
-      const s = this.stageDef();
-      return s ? { label: s.label, x: s.x, z: s.z } : null;
-    }
-    return null;
-  }
-
-  update(dt, ctx) {
-    // dialogue playback
-    if (this.dialogue.length) {
-      const line = this.dialogue[0];
-      line.t -= dt;
-      if (line.t <= 0) this.dialogue.shift();
-      else this.hooks.subtitle(line.speaker, line.text);
-    }
-    const obj = this.objective();
-    if (obj) this.marker.show(obj.x, obj.z); else this.marker.hide();
-
-    if (this.state === 'idle') {
-      const m = this.mission();
-      if (!m) { this.state = 'done'; return; }
-      if (Math.hypot(ctx.pos.x - m.start.x, ctx.pos.z - m.start.z) < 4.5 && !ctx.inCar) {
-        this.state = 'active';
-        this.stage = 0;
-        this.spawnedForStage = -1;
-        this.dialogue = m.intro.map(([speaker, text]) => ({ speaker, text, t: 2.8 }));
-        this.hooks.subtitle(m.intro[0][0], m.intro[0][1]);
-      }
-      return;
-    }
-    if (this.state !== 'active') return;
-
-    const s = this.stageDef();
-    if (!s) { this.#complete(ctx); return; }
-    const dist = Math.hypot(ctx.pos.x - s.x, ctx.pos.z - s.z);
-
-    if (s.type === 'shootout' && this.spawnedForStage !== this.stage) {
-      this.spawnedForStage = this.stage;
-      for (let i = 0; i < s.count; i++) {
-        const a = (i / s.count) * Math.PI * 2;
-        ctx.combat.spawnEnemy(s.x + Math.sin(a) * 9, s.z + Math.cos(a) * 9, 1 + this.index * 0.15);
-      }
-      if (this.index === 2) this.hooks.setWanted(2);
-    }
-    if (s.type === 'escape' && this.spawnedForStage !== this.stage) {
-      this.spawnedForStage = this.stage;
-      this.hooks.setWanted(Math.max(ctx.wanted, s.minWanted || 2));
-    }
-    if (s.type === 'timed') {
-      this.stageTimer += dt;
-      s.left = Math.max(0, s.seconds - this.stageTimer);
-      if (s.left <= 0) { // failed: restart the stage, small fine
-        this.stageTimer = 0;
-        this.hooks.toast(0, 'TOO SLOW — TRY AGAIN');
-        return;
-      }
-    }
-
-    let done = false;
-    if (s.type === 'goto') done = dist < 4.2 && !ctx.inCar;
-    else if (s.type === 'drive' || s.type === 'timed') done = dist < 7.5 && ctx.inCar;
-    else if (s.type === 'escape') done = dist < 8;
-    else if (s.type === 'shootout') done = dist < 26 && ctx.combat.aliveEnemies() === 0 && this.spawnedForStage === this.stage;
-    if (done) {
-      this.stage++;
-      this.stageTimer = 0;
-      this.spawnedForStage = -1;
-      if (this.stage >= this.mission().stages.length) this.#complete(ctx);
-    }
-  }
-
-  #complete(ctx) {
-    const m = this.mission();
-    const payout = Math.round(m.basePay * (1 + 0.25 * ctx.wanted));
-    this.dialogue = m.outro.map(([speaker, text]) => ({ speaker, text, t: 3 }));
-    this.hooks.missionPaid(payout, m);
-    this.index++;
-    this.state = this.index >= MISSIONS.length ? 'done' : 'idle';
-    this.stage = 0;
+    m.fightSpawned = true;
   }
 }
 
-// — the Harborfront street race: 3 rival drivers, 8 checkpoints, one lap.
-export const RACE_CHECKPOINTS = [
-  { x: 160, z: 160 }, { x: 280, z: 160 }, { x: 280, z: 40 }, { x: 160, z: 40 },
-  { x: 40, z: 40 }, { x: 40, z: 160 }, { x: 40, z: 280 }, { x: 160, z: 280 },
-];
-export const RACE_START = { x: 160, z: 300 };
+export function currentStage(state) {
+  if (!state.mission) return null;
+  return state.mission.def.stages[state.mission.stage];
+}
 
-export class RaceManager {
-  constructor() {
-    this.state = 'idle';   // idle | countdown | running | finished
-    this.time = 0;
-    this.countdown = 0;
-    this.playerCp = 0;
-    this.cpTimer = 0;
-    this.rivals = [];      // { car, cp, progress }
-    this.result = null;
+export function missionObjectiveText(state) {
+  const s = currentStage(state);
+  return s ? s.label : null;
+}
+
+function completeMission(state) {
+  const m = state.mission;
+  const heatBonus = 1 + 0.25 * wanted.stars;
+  const pay = Math.round(m.def.basePay * heatBonus);
+  state.cash += pay;
+  state.respect += m.def.respect;
+  const d = districtAt(state.player.x, state.player.y);
+  state.standing[d.id] = clamp((state.standing[d.id] || 1) + 1, 0, 5);
+  state.toast = { main: `+$${pay.toLocaleString('en-US')}`, sub: `${m.def.title} COMPLETE · RESPECT +${m.def.respect}`, until: state.now + 3.4 };
+  state.audio?.cash();
+  state.missionIndex++;
+  state.mission = null;
+  if (state.missionIndex < MISSIONS.length) {
+    state.dialogue = [{ speaker: 'SABLE IVERS', line: 'Good. Next job is on the board when you are ready — come see me at the garage.' }];
+    state.dialogueT = 0;
+  } else {
+    state.dialogue = [
+      { speaker: 'SABLE IVERS', line: 'The Queen is ours, Tide. Porto Sirena runs on your tide now.' },
+      { speaker: 'NICO', line: 'One last chain, she said. Sure, Sable. Sure.' },
+    ];
+    state.dialogueT = 0;
+  }
+  state.saveGame?.();
+}
+
+export function updateMissions(state, dt, input) {
+  const m = state.mission;
+  if (!m) return;
+  const stage = currentStage(state);
+  const p = state.player;
+  const d = dist(p.x, p.y, stage.x, stage.y);
+  let done = false;
+
+  switch (stage.kind) {
+    case 'goto':
+      if (d < 90) { if (stage.heat) addHeat(stage.heat); done = true; }
+      break;
+    case 'steal':
+      // done once Nico is driving the target car
+      if (state.playerCar && state.playerCar === m.stageCar) done = true;
+      break;
+    case 'deliver':
+      if (state.playerCar === m.stageCar && d < 110 && Math.abs(state.playerCar.speed) < 30) done = true;
+      break;
+    case 'fight':
+      if (m.fightSpawned && combat.enemies.every((e) => !e.alive)) done = true;
+      break;
+    case 'board':
+      if (d < 130 && !state.playerCar) done = true;
+      break;
+    case 'vault':
+      if (d < 60 && !state.playerCar && input.interactHeld) {
+        m.crackTime += dt;
+        if (m.crackTime > 0.4 && stage.heat) { addHeat(stage.heat); stage.heat = 0; }
+        if (m.crackTime >= 3.2) done = true;
+      }
+      break;
+    case 'escape':
+      if (wanted.stars === 0 && d < 120) done = true;
+      break;
   }
 
-  playerProgress(pos) {
-    const next = RACE_CHECKPOINTS[this.playerCp % RACE_CHECKPOINTS.length];
-    const d = Math.hypot(next.x - pos.x, next.z - pos.z);
-    return this.playerCp * 1000 - d;
+  if (done) {
+    m.stage++;
+    if (m.stage >= m.def.stages.length) completeMission(state);
+    else prepareStage(state);
   }
+}
 
-  position(pos) {
-    const mine = this.playerProgress(pos);
-    let posNum = 1;
-    for (const r of this.rivals) if (r.progress > mine) posNum++;
-    return posNum;
+// --- the Harborfront street race -------------------------------------------
+
+export function startRace(state) {
+  const checkpoints = [
+    { x: 840, y: 1700 }, { x: 1260, y: 1700 }, { x: 1680, y: 1700 },
+    { x: 1680, y: 2120 }, { x: 1260, y: 2120 }, { x: 840, y: 2120 },
+    { x: 420, y: 2120 }, { x: RACE_START.x, y: RACE_START.y },
+  ];
+  const racers = [];
+  for (let i = 0; i < 3; i++) {
+    const car = makeCar(2 - (i % 2), RACE_START.x - 60, RACE_START.y + 44 + i * 30, 0);
+    car.color = ['#3cc8ff', '#7dffb0', '#e8e3d8'][i];
+    car.racer = true;
+    racers.push(car);
   }
+  state.race = { checkpoints, idx: 0, timer: 0, racers, finished: false, playerDone: 0 };
+  state.dialogue = [{ speaker: 'RACE CALLER', line: 'Harborfront ring! Six lights, one loop — first home takes the pot.' }];
+  state.dialogueT = 0;
+}
+
+export function updateRace(state, dt) {
+  const race = state.race;
+  if (!race || race.finished) return;
+  race.timer += dt;
+  // AI racers steer at their next checkpoint
+  for (const car of race.racers) {
+    const cp = race.checkpoints[car.cpIdx || 0];
+    const want = Math.atan2(cp.y - car.y, cp.x - car.x);
+    const steer = clamp(angleDelta(car.angle, want) * 1.7, -1, 1);
+    stepCar(car, { throttle: 0.95, steer, brake: Math.abs(angleDelta(car.angle, want)) > 1.2, nitro: false }, dt, null);
+    if (dist(car.x, car.y, cp.x, cp.y) < 95) car.cpIdx = (car.cpIdx || 0) + 1;
+    if ((car.cpIdx || 0) >= race.checkpoints.length) car.cpIdx = race.checkpoints.length; // done
+  }
+  // player progress
+  if (state.playerCar) {
+    const cp = race.checkpoints[race.idx];
+    if (cp && dist(state.playerCar.x, state.playerCar.y, cp.x, cp.y) < 100) race.idx++;
+    if (race.idx >= race.checkpoints.length) {
+      const ahead = race.racers.filter((c) => (c.cpIdx || 0) >= race.checkpoints.length).length;
+      race.playerPos = ahead + 1;
+      race.finished = true;
+      const prize = [0, 600, 300, 150, 60][race.playerPos] || 60;
+      state.cash += prize;
+      state.respect += 30;
+      state.toast = { main: `+$${prize}`, sub: `RACE FINISH — POS ${race.playerPos}/4 · RESPECT +30`, until: state.now + 3.4 };
+      state.audio?.cash();
+      state.saveGame?.();
+    }
+  }
+}
+
+export function racePosition(state) {
+  const race = state.race;
+  if (!race) return 1;
+  let pos = 1;
+  for (const c of race.racers) if ((c.cpIdx || 0) > race.idx) pos++;
+  return pos;
 }

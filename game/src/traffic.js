@@ -1,119 +1,86 @@
-// traffic.js — Porto Sirena's civilian traffic: cars that cruise the street
-// grid on right-hand lanes, turn at intersections, brake for the player, and
-// park along the curbs. Every car here can be stolen by the player.
+// NEON TIDE — ambient traffic: civilian cars that cruise the road grid,
+// brake for the car ahead and swerve (badly) when a chase crosses them.
 
-import { STREET_COORDS } from './city.js';
-import { createCar, driveAI, syncCarMesh } from './vehicles.js';
+import { CAR_MODELS } from './config.js';
+import { mulberry32, pick, clamp, angleDelta } from './random.js';
+import { makeCar, stepCar } from './vehicles.js';
+import { city } from './city.js';
 
-const EDGE = 400;
-
-function laneCoord(axis, street, dir) {
-  // right-hand traffic: the lane offset flips with the travel direction
-  if (axis === 'v') return dir > 0 ? street - 4.5 : street + 4.5;
-  return dir > 0 ? street + 4.5 : street - 4.5;
+export function spawnTraffic(count) {
+  const rng = mulberry32(4242);
+  const cars = [];
+  for (let i = 0; i < count; i++) {
+    const vertical = rng() < 0.5;
+    const lane = rng() < 0.5 ? -22 : 22;
+    let x, y, angle;
+    if (vertical) {
+      x = pick(rng, city.roadsX) + lane; y = 200 + rng() * 2200;
+      angle = lane > 0 ? Math.PI / 2 : -Math.PI / 2;
+    } else {
+      x = 200 + rng() * 3800; y = pick(rng, city.roadsY) + lane;
+      angle = lane > 0 ? 0 : Math.PI;
+    }
+    const car = makeCar(Math.floor(rng() * CAR_MODELS.length), x, y, angle);
+    car.color = pick(rng, car.model.colors);
+    car.cruise = 130 + rng() * 90;
+    car.vertical = vertical;
+    car.lane = lane;
+    cars.push(car);
+  }
+  return cars;
 }
 
-function lanePoint(axis, street, dir, at) {
-  const fixed = laneCoord(axis, street, dir);
-  return axis === 'v' ? { x: fixed, z: at } : { x: at, z: fixed };
+export function updateTraffic(cars, dt, blockers) {
+  for (const car of cars) {
+    // pick the road line we follow; at an intersection, sometimes turn
+    let targetSpeed = car.cruise;
+    // slow for anything close ahead
+    const fx = car.x + Math.cos(car.angle) * 60, fy = car.y + Math.sin(car.angle) * 60;
+    for (const b of blockers) {
+      if (b === car) continue;
+      const dx = b.x - fx, dy = b.y - fy;
+      if (dx * dx + dy * dy < 55 * 55) { targetSpeed = 0; break; }
+    }
+    const input = { throttle: 0, steer: 0, brake: false, nitro: false };
+    if (car.speed < targetSpeed) input.throttle = 0.7;
+    else if (car.speed > targetSpeed + 20) input.throttle = -0.4;
+    // hold the lane: steer gently back to the lane offset of the nearest road
+    if (car.vertical) {
+      const rx = nearestLine(car.x, city.roadsX) + car.lane;
+      input.steer = clamp(angleDelta(car.angle, desiredAngle(car, rx, null)) * 1.4, -0.7, 0.7);
+    } else {
+      const ry = nearestLine(car.y, city.roadsY) + car.lane;
+      input.steer = clamp(angleDelta(car.angle, desiredAngle(car, null, ry)) * 1.4, -0.7, 0.7);
+    }
+    stepCar(car, input, dt, null);
+    wrapTraffic(car);
+  }
 }
 
-export class TrafficManager {
-  constructor(scene, rng) {
-    this.scene = scene;
-    this.rng = rng;
-    this.units = [];   // { car, axis, street, dir, target }
-    this.parked = [];
-    for (let i = 0; i < 11; i++) this.#spawnCruiser(i);
-    for (let i = 0; i < 9; i++) this.#spawnParked(i);
-  }
+function nearestLine(v, lines) {
+  let best = lines[0], bd = Infinity;
+  for (const l of lines) { const d = Math.abs(l - v); if (d < bd) { bd = d; best = l; } }
+  return best;
+}
 
-  #randomLeg() {
-    const axis = this.rng() > 0.5 ? 'v' : 'h';
-    const street = STREET_COORDS[Math.floor(this.rng() * STREET_COORDS.length)];
-    const dir = this.rng() > 0.5 ? 1 : -1;
-    return { axis, street, dir };
+function desiredAngle(car, targetX, targetY) {
+  // keep heading along the current direction of travel, nudged to the lane
+  if (targetX !== null) {
+    const off = targetX - car.x;
+    const base = Math.sin(car.angle) > 0 ? Math.PI / 2 : -Math.PI / 2;
+    return base + clamp(off * 0.01, -0.3, 0.3) * Math.cos(base);
   }
+  const off = targetY - car.y;
+  const base = Math.cos(car.angle) > 0 ? 0 : Math.PI;
+  return base + clamp(off * 0.01, -0.3, 0.3);
+}
 
-  #spawnCruiser() {
-    const { axis, street, dir } = this.#randomLeg();
-    const along = -EDGE + this.rng() * EDGE * 2;
-    const p = lanePoint(axis, street, dir, along);
-    const heading = axis === 'v' ? (dir > 0 ? 0 : Math.PI) : (dir > 0 ? Math.PI / 2 : -Math.PI / 2);
-    const car = createCar(this.scene, Math.floor(this.rng() * 5), p.x, p.z, heading, 'civilian');
-    const unit = { car, axis, street, dir, target: null, speed: 10 + this.rng() * 5 };
-    unit.target = this.#nextTarget(unit);
-    this.units.push(unit);
-  }
-
-  #spawnParked() {
-    const axis = this.rng() > 0.5 ? 'v' : 'h';
-    const street = STREET_COORDS[Math.floor(this.rng() * STREET_COORDS.length)];
-    const side = this.rng() > 0.5 ? 7.6 : -7.6;
-    const along = -EDGE + this.rng() * EDGE * 2;
-    const x = axis === 'v' ? street + side : along;
-    const z = axis === 'v' ? along : street + side;
-    if (z > 330) return;
-    const heading = axis === 'v' ? (side > 0 ? Math.PI : 0) : (side > 0 ? -Math.PI / 2 : Math.PI / 2);
-    const car = createCar(this.scene, Math.floor(this.rng() * 5), x, z, heading, 'civilian');
-    car.parked = true;
-    this.parked.push(car);
-  }
-
-  // The next point to aim at: the far side of the next intersection (or the
-  // world edge), where the car then picks a new leg — straight or a turn.
-  #nextTarget(unit) {
-    const along = unit.axis === 'v' ? unit.car.z : unit.car.x;
-    const ahead = STREET_COORDS.filter(c => (c - along) * unit.dir > 12);
-    const at = ahead.length
-      ? ahead.reduce((best, c) => (Math.abs(c - along) < Math.abs(best - along) ? c : best))
-      : unit.dir * EDGE;
-    return lanePoint(unit.axis, unit.street, unit.dir, at + unit.dir * 16);
-  }
-
-  #chooseLeg(unit) {
-    const along = unit.axis === 'v' ? unit.car.z : unit.car.x;
-    const cross = STREET_COORDS.reduce((best, c) =>
-      (Math.abs(c - along) < Math.abs(best - along) ? c : best), STREET_COORDS[0]);
-    if (Math.abs(cross - along) < 22 && this.rng() > 0.45) {
-      // turn onto the cross street
-      const oldStreet = unit.street;
-      unit.axis = unit.axis === 'v' ? 'h' : 'v';
-      unit.street = cross;
-      unit.dir = this.rng() > 0.5 ? 1 : -1;
-      const p = lanePoint(unit.axis, unit.street, unit.dir, oldStreet);
-      unit.car.x = p.x; unit.car.z = p.z;
-    } else if ((along > EDGE - 30 && unit.dir > 0) || (along < -EDGE + 30 && unit.dir < 0)) {
-      unit.dir *= -1; // U-turn at the world edge
-      const p = lanePoint(unit.axis, unit.street, unit.dir, along);
-      unit.car.x = p.x; unit.car.z = p.z;
-    }
-    unit.target = this.#nextTarget(unit);
-  }
-
-  allCars() {
-    return [...this.units.map(u => u.car), ...this.parked];
-  }
-
-  removeCar(car) {
-    this.units = this.units.filter(u => u.car !== car);
-    this.parked = this.parked.filter(c => c !== car);
-  }
-
-  update(dt, playerPos, playerSpeed) {
-    for (const unit of this.units) {
-      const car = unit.car;
-      if (car.dead) continue;
-      const dx = unit.target.x - car.x, dz = unit.target.z - car.z;
-      if (Math.hypot(dx, dz) < 9) this.#chooseLeg(unit);
-      // brake when the player is right ahead
-      let speed = unit.speed;
-      const toPlayer = Math.hypot(playerPos.x - car.x, playerPos.z - car.z);
-      if (toPlayer < 10) speed = Math.min(speed, 2.5);
-      driveAI(car, Math.atan2(dx, dz), speed, dt, null);
-      if (car.z > 348) { car.z = 348; car.vz = 0; }
-      syncCarMesh(car, dt);
-    }
-    for (const car of this.parked) syncCarMesh(car, 0);
+function wrapTraffic(car) {
+  // keep traffic inside the city: teleport strays back to a far road
+  if (car.x < 60 || car.x > 4140 || car.y < 60 || car.y > 2560) {
+    const rng = Math.random;
+    if (car.vertical) { car.y = rng() < 0.5 ? 120 : 2500; car.x = nearestLine(car.x, city.roadsX) + car.lane; }
+    else { car.x = rng() < 0.5 ? 120 : 4080; car.y = nearestLine(car.y, city.roadsY) + car.lane; }
+    car.speed = car.cruise;
   }
 }

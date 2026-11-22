@@ -1,51 +1,30 @@
-// input.js — keyboard + mouse state for NEON TIDE.
-// One shared Input object: held keys, edge-triggered presses, mouse delta and
-// buttons. Pointer lock is requested by main.js on the canvas; this module
-// only records what the player does.
+// NEON TIDE — keyboard + mouse state. Systems read `keys` and `mouse`;
+// edge-triggered presses are queued in `pressed` and drained once per frame.
 
-export class Input {
-  constructor(canvas) {
-    this.canvas = canvas;
-    this.keys = new Set();       // codes currently held, e.g. "KeyW"
-    this.pressed = new Set();    // codes that went down since last consume
-    this.mouseDX = 0;
-    this.mouseDY = 0;
-    this.mouseDown = false;
-    this.locked = false;
+export const keys = new Set();
+export const pressed = new Set();
+export const mouse = { x: 640, y: 360, down: false, clicked: false };
 
-    addEventListener('keydown', (e) => {
-      if (!e.repeat) this.pressed.add(e.code);
-      this.keys.add(e.code);
-      if (['ArrowUp', 'ArrowDown', 'Space', 'Tab'].includes(e.code)) e.preventDefault();
-    });
-    addEventListener('keyup', (e) => this.keys.delete(e.code));
-    addEventListener('blur', () => { this.keys.clear(); this.mouseDown = false; });
-    addEventListener('mousemove', (e) => {
-      if (!this.locked) return;
-      this.mouseDX += e.movementX || 0;
-      this.mouseDY += e.movementY || 0;
-    });
-    addEventListener('mousedown', (e) => { if (e.button === 0) this.mouseDown = true; });
-    addEventListener('mouseup', (e) => { if (e.button === 0) this.mouseDown = false; });
-    document.addEventListener('pointerlockchange', () => {
-      this.locked = document.pointerLockElement === canvas;
-    });
-  }
+const GAME_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']);
 
-  down(code) { return this.keys.has(code); }
-
-  // Edge trigger: true once per physical press.
-  hit(code) {
-    if (!this.pressed.has(code)) return false;
-    this.pressed.delete(code);
-    return true;
-  }
-
-  lock() { this.canvas.requestPointerLock?.(); }
-
-  consumeMouse() {
-    const dx = this.mouseDX, dy = this.mouseDY;
-    this.mouseDX = 0; this.mouseDY = 0;
-    return { dx, dy };
-  }
+export function initInput(canvas) {
+  addEventListener('keydown', (e) => {
+    if (GAME_KEYS.has(e.code)) e.preventDefault();
+    if (!e.repeat) pressed.add(e.code);
+    keys.add(e.code);
+  });
+  addEventListener('keyup', (e) => keys.delete(e.code));
+  addEventListener('blur', () => { keys.clear(); mouse.down = false; });
+  canvas.addEventListener('mousemove', (e) => {
+    const r = canvas.getBoundingClientRect();
+    mouse.x = (e.clientX - r.left) * (canvas.width / r.width);
+    mouse.y = (e.clientY - r.top) * (canvas.height / r.height);
+  });
+  canvas.addEventListener('mousedown', (e) => {
+    if (e.button === 0) { mouse.down = true; mouse.clicked = true; }
+  });
+  addEventListener('mouseup', (e) => { if (e.button === 0) mouse.down = false; });
 }
+
+export function wasPressed(code) { return pressed.has(code); }
+export function endFrameInput() { pressed.clear(); mouse.clicked = false; }
