@@ -1,153 +1,216 @@
-// NEON TIDE — combat: fists, pistol and SMG with a weapon wheel, tracer
-// bullets, armed enemies who shoot back, and the damage-direction feed the
-// HUD draws. Crime witnessed by police feeds the wanted system.
+// NEON TIDE — combat.js: weapons, bullets, thugs, and getting shot back.
+// On foot the player aims with the mouse: click fires the equipped gun,
+// F throws a melee swing, 1/2/3 (or the Q wheel) swaps fists/pistol/SMG.
+// Mission thugs carry pistols, close to range, and shoot back; every hit the
+// player takes reports its direction so the HUD can draw the damage arc.
 
 import { WEAPONS } from './config.js';
-import { clamp, dist } from './random.js';
-import { addHeat } from './police.js';
+import { clamp, dist, angleTo } from './random.js';
 
-export const combat = {
-  weaponIdx: 0,
-  cooldown: 0,
-  bullets: [],   // {x,y,vx,vy,life,fromPlayer,damage}
-  enemies: [],   // {x,y,health,angle,cooldown,coat,name}
-  lastHitFrom: -1, // angle of the last shot that hit the player (for the HUD arc)
-  lastHitAt: -9,
-  swingAt: -9,
-};
+export class Combat {
+  constructor() {
+    this.weapon = 'pistol';
+    this.ammo = { pistol: WEAPONS.pistol.ammo, smg: WEAPONS.smg.ammo };
+    this.cooldown = 0;
+    this.bullets = [];
+    this.enemyBullets = [];
+    this.thugs = [];
+    this.muzzle = 0;
+    this.lastDamageAngle = 0;
+    this.lastDamageAt = -9;
+  }
 
-export function currentWeapon() { return WEAPONS[combat.weaponIdx]; }
+  spawnThug(x, y, opts = {}) {
+    const thug = {
+      x, y,
+      angle: 0,
+      health: opts.health ?? 46,
+      speed: opts.speed ?? 96,
+      range: opts.range ?? 300,
+      cooldown: Math.random() * 0.8,
+      shirt: opts.shirt ?? '#8e2f2f',
+      name: opts.name ?? 'Thug',
+      down: false,
+    };
+    this.thugs.push(thug);
+    return thug;
+  }
 
-export function cycleWeapon(state, dir) {
-  combat.weaponIdx = (combat.weaponIdx + dir + WEAPONS.length) % WEAPONS.length;
-  return currentWeapon();
-}
+  setWeapon(id) {
+    if (WEAPONS[id]) this.weapon = id;
+  }
 
-export function spawnEnemy(x, y, name) {
-  const e = { x, y, health: 60, angle: Math.PI, cooldown: 1 + Math.random(), coat: '#5b2a86', name: name || 'Collector', alive: true };
-  combat.enemies.push(e);
-  return e;
-}
+  cycleWeapon(dir) {
+    const order = ['fists', 'pistol', 'smg'];
+    const i = order.indexOf(this.weapon);
+    this.weapon = order[(i + dir + order.length) % order.length];
+  }
 
-export function tryAttack(state, aimAngle, now, dt) {
-  combat.cooldown -= dt;
-  const w = currentWeapon();
-  if (combat.cooldown > 0) return;
-  if (w.id === 'fists') {
-    combat.cooldown = w.rate;
-    combat.swingAt = now;
-    for (const e of combat.enemies) {
-      if (e.alive && dist(state.player.x, state.player.y, e.x, e.y) < w.range + 14) {
-        hurtEnemy(state, e, w.damage);
+  // Try to attack toward world point (wx, wy). Returns 'shot' | 'melee' | null.
+  attack(game, wx, wy) {
+    if (this.cooldown > 0) return null;
+    const spec = WEAPONS[this.weapon];
+    const p = game.player;
+    if (this.weapon === 'fists') {
+      this.cooldown = spec.cooldown;
+      game.audio?.swing();
+      let hit = false;
+      for (const t of this.thugs) {
+        if (!t.down && dist(p.x, p.y, t.x, t.y) < spec.range + 10) {
+          this.hurtThug(t, spec.damage, game);
+          hit = true;
+        }
+      }
+      for (const ped of game.peds.peds) {
+        if (ped.down <= 0 && dist(p.x, p.y, ped.x, ped.y) < spec.range + 8) {
+          ped.down = 6;
+          game.onCrime?.(14, 'assault');
+          hit = true;
+        }
+      }
+      return hit ? 'melee' : null;
+    }
+    if ((this.ammo[this.weapon] ?? 0) <= 0) {
+      this.cooldown = 0.3;
+      game.audio?.dryFire();
+      return null;
+    }
+    this.ammo[this.weapon]--;
+    this.cooldown = spec.cooldown;
+    this.muzzle = 0.05;
+    const a = angleTo(p.x, p.y, wx, wy) + game.rng.float(-0.012, 0.012);
+    this.bullets.push({
+      x: p.x + Math.cos(a) * 14, y: p.y + Math.sin(a) * 14,
+      vx: Math.cos(a) * spec.bulletSpeed, vy: Math.sin(a) * spec.bulletSpeed,
+      life: spec.range / spec.bulletSpeed, damage: spec.damage, angle: a,
+    });
+    game.audio?.shot(this.weapon);
+    game.onCrime?.(6, 'shots fired');
+    return 'shot';
+  }
+
+  hurtThug(thug, damage, game) {
+    thug.health -= damage;
+    if (thug.health <= 0 && !thug.down) {
+      thug.down = true;
+      game.onThugDown?.(thug);
+    }
+  }
+
+  update(dt, game) {
+    this.cooldown -= dt;
+    this.muzzle -= dt;
+    const city = game.city;
+    // Player bullets.
+    for (const b of this.bullets) {
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.life -= dt;
+      if (b.life <= 0) continue;
+      for (const t of this.thugs) {
+        if (!t.down && dist(b.x, b.y, t.x, t.y) < 13) {
+          this.hurtThug(t, b.damage, game);
+          b.life = 0;
+          break;
+        }
+      }
+      if (b.life > 0) {
+        for (const car of game.allCars()) {
+          if (Math.abs(b.x - car.x) < car.spec.w / 2 + 3 && Math.abs(b.y - car.y) < car.spec.h / 2 + 3) {
+            car.health -= b.damage * 0.4;
+            b.life = 0;
+            break;
+          }
+        }
       }
     }
-    return;
-  }
-  const ammo = state.ammo[w.id];
-  if (ammo <= 0) return;
-  state.ammo[w.id] = ammo - 1;
-  combat.cooldown = w.rate;
-  const spread = (Math.random() - 0.5) * 2 * w.spread;
-  const a = aimAngle + spread;
-  combat.bullets.push({
-    x: state.player.x + Math.cos(aimAngle) * 16, y: state.player.y + Math.sin(aimAngle) * 16,
-    vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed,
-    life: w.range / w.speed, fromPlayer: true, damage: w.damage,
-  });
-  state.audio?.shot(w.id);
-  if (state.nearPolice) addHeat(7); // gunfire in front of a unit is a crime
-}
-
-export function hurtEnemy(state, e, damage) {
-  e.health -= damage;
-  if (e.health <= 0 && e.alive) {
-    e.alive = false;
-    state.onEnemyDown?.(e);
-    addHeat(10);
-  }
-}
-
-export function updateCombat(state, dt, now) {
-  // bullets
-  for (let i = combat.bullets.length - 1; i >= 0; i--) {
-    const b = combat.bullets[i];
-    b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
-    let dead = b.life <= 0;
-    if (!dead && b.fromPlayer) {
-      for (const e of combat.enemies) {
-        if (e.alive && dist(b.x, b.y, e.x, e.y) < 13) { hurtEnemy(state, e, b.damage); dead = true; break; }
+    this.bullets = this.bullets.filter((b) => b.life > 0);
+    // Enemy bullets.
+    const p = game.playerPos();
+    for (const b of this.enemyBullets) {
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.life -= dt;
+      if (b.life > 0 && dist(b.x, b.y, p.x, p.y) < (game.playerCar ? 30 : 12)) {
+        game.damagePlayer?.(b.damage, b.angle);
+        b.life = 0;
       }
     }
-    if (!dead && !b.fromPlayer) {
-      const p = state.player;
-      const target = state.playerCar || p;
-      if (dist(b.x, b.y, target.x, target.y) < (state.playerCar ? 26 : 12)) {
-        hurtPlayer(state, b.damage, Math.atan2(b.vy, b.vx));
-        dead = true;
+    this.enemyBullets = this.enemyBullets.filter((b) => b.life > 0);
+    // Thug AI: close to range, strafe a little, shoot on cooldown.
+    for (const t of this.thugs) {
+      if (t.down) continue;
+      const d = dist(t.x, t.y, p.x, p.y);
+      t.angle = angleTo(t.x, t.y, p.x, p.y);
+      if (d > t.range * 0.62) {
+        t.x += Math.cos(t.angle) * t.speed * dt;
+        t.y += Math.sin(t.angle) * t.speed * dt;
+      } else if (d < 90) {
+        t.x -= Math.cos(t.angle) * t.speed * 0.5 * dt;
+        t.y -= Math.sin(t.angle) * t.speed * 0.5 * dt;
+      }
+      t.cooldown -= dt;
+      if (t.cooldown <= 0 && d < t.range && game.mode === 'play') {
+        t.cooldown = game.rng.float(0.9, 1.7);
+        const a = angleTo(t.x, t.y, p.x, p.y) + game.rng.float(-0.07, 0.07);
+        this.enemyBullets.push({
+          x: t.x + Math.cos(a) * 13, y: t.y + Math.sin(a) * 13,
+          vx: Math.cos(a) * 640, vy: Math.sin(a) * 640,
+          life: 0.8, damage: game.rng.float(5, 9), angle: a,
+        });
+        game.audio?.shot('pistol', true);
       }
     }
-    if (dead) combat.bullets.splice(i, 1);
+    void city;
   }
-  // enemies: keep mid range, strafe slowly, fire in bursts
-  for (const e of combat.enemies) {
-    if (!e.alive) continue;
-    const p = state.player;
-    const d = dist(e.x, e.y, p.x, p.y);
-    e.angle = Math.atan2(p.y - e.y, p.x - e.x);
-    if (d > 190) { e.x += Math.cos(e.angle) * 66 * dt; e.y += Math.sin(e.angle) * 66 * dt; }
-    else if (d < 110) { e.x -= Math.cos(e.angle) * 50 * dt; e.y -= Math.sin(e.angle) * 50 * dt; }
-    e.cooldown -= dt;
-    if (e.cooldown <= 0 && d < 330) {
-      e.cooldown = 0.9 + Math.random() * 0.7;
-      const a = e.angle + (Math.random() - 0.5) * 0.14;
-      combat.bullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 780, vy: Math.sin(a) * 780, life: 0.5, fromPlayer: false, damage: 7 });
-      state.audio?.shot('pistol');
-    }
-  }
-}
 
-export function hurtPlayer(state, damage, fromAngle) {
-  const armorCut = 1 - 0.12 * state.upgrades.armor;
-  let dmg = damage * armorCut;
-  if (state.player.armor > 0) {
-    const absorbed = Math.min(state.player.armor, dmg * 0.6);
-    state.player.armor -= absorbed;
-    dmg -= absorbed;
-  }
-  state.player.health -= dmg;
-  combat.lastHitFrom = fromAngle;
-  combat.lastHitAt = state.now;
-  state.audio?.hurt();
-  if (state.player.health <= 0) state.onWasted?.();
-}
-
-export function drawCombat(ctx, now) {
-  // bullets as short tracers
-  ctx.lineWidth = 2.5;
-  for (const b of combat.bullets) {
-    ctx.strokeStyle = b.fromPlayer ? 'rgba(255,220,120,0.95)' : 'rgba(255,110,90,0.95)';
-    ctx.beginPath();
-    ctx.moveTo(b.x - b.vx * 0.016, b.y - b.vy * 0.016);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
-  }
-  // enemies
-  for (const e of combat.enemies) {
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath(); ctx.ellipse(e.x, e.y + 3, 8, 4.5, 0, 0, Math.PI * 2); ctx.fill();
-    if (!e.alive) {
-      ctx.fillStyle = '#3a2a3a';
-      ctx.beginPath(); ctx.ellipse(e.x, e.y, 10, 5, 0, 0, Math.PI * 2); ctx.fill();
-      continue;
+  draw(ctx) {
+    for (const t of this.thugs) {
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      if (t.down) {
+        ctx.rotate(Math.PI / 2);
+        ctx.fillStyle = t.shirt;
+        ctx.fillRect(-4, -9, 8, 18);
+        ctx.restore();
+        continue;
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath(); ctx.ellipse(0, 4, 7, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = t.shirt;
+      ctx.fillRect(-5, -5, 10, 12);
+      ctx.fillStyle = '#22252b';
+      ctx.fillRect(-5, 5, 4, 6);
+      ctx.fillRect(1, 5, 4, 6);
+      ctx.fillStyle = '#d9a066';
+      ctx.beginPath(); ctx.arc(0, -8, 4.4, 0, Math.PI * 2); ctx.fill();
+      // Gun toward facing.
+      ctx.rotate(t.angle + Math.PI / 2);
+      ctx.fillStyle = '#15161a';
+      ctx.fillRect(4, -12, 3, 10);
+      ctx.restore();
+      // Health tick.
+      if (t.health < 46) {
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(t.x - 12, t.y - 22, 24, 4);
+        ctx.fillStyle = '#ff5147';
+        ctx.fillRect(t.x - 12, t.y - 22, 24 * clamp(t.health / 46, 0, 1), 4);
+      }
     }
-    ctx.fillStyle = e.coat;
-    ctx.beginPath(); ctx.arc(e.x, e.y, 7.5, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#d9a066';
-    ctx.beginPath(); ctx.arc(e.x, e.y - 3.5, 4, 0, Math.PI * 2); ctx.fill();
-    // gun line + health tick
-    ctx.strokeStyle = '#14181d'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x + Math.cos(e.angle) * 15, e.y + Math.sin(e.angle) * 15); ctx.stroke();
-    ctx.fillStyle = '#ff5555';
-    ctx.fillRect(e.x - 10, e.y - 16, 20 * clamp(e.health / 60, 0, 1), 3);
+    ctx.strokeStyle = '#ffe9a0';
+    ctx.lineWidth = 2;
+    for (const b of this.bullets) {
+      ctx.beginPath();
+      ctx.moveTo(b.x - b.vx * 0.012, b.y - b.vy * 0.012);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#ff9a8a';
+    for (const b of this.enemyBullets) {
+      ctx.beginPath();
+      ctx.moveTo(b.x - b.vx * 0.012, b.y - b.vy * 0.012);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
   }
 }

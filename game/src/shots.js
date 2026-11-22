@@ -1,105 +1,116 @@
-// NEON TIDE — deterministic screenshot scenes (?shot=1..4). Each scene poses
-// the real game state — cars, police, HUD values, dialogue — so the capture
-// is a genuine render of play, with every HUD region populated per the
-// round-12 density contract. No gameplay runs in shot mode; the scene is
-// pinned each frame by pinShotFrame.
+// NEON TIDE — shots.js: deterministic screenshot scenes (?shot=1..4).
+// Each setup parks the game in a composed, fully-HUD-populated moment: the
+// world freezes (main.js skips physics in shot mode) while rain and sirens
+// keep animating, so the captures are real renders of the running game.
 
-import { wanted } from './police.js';
-import { roadblocks } from './police.js';
-import { spawnPoliceUnit } from './police.js';
-import { combat } from './combat.js';
-import { makeCar } from './vehicles.js';
-import { MISSIONS } from './missions.js';
-import { FERRY_POS, GARAGE_POS } from './config.js';
+import { createCar } from './vehicles.js';
 
-function setWanted(stars, heat) {
-  wanted.stars = stars; wanted.heat = heat; wanted.unseenFor = 0; wanted.bust = 0;
+function baseState(game) {
+  game.mode = 'play';
+  game.cash = 2450;
+  game.respect = 340; // Smuggler, mid-rank
+  game.standing = { cannery: 2, velvet: 3, alto: 1, harbor: 3 };
+  game.player.health = 92;
+  game.player.armor = 55;
+  game.clockMinutes = 19 * 60 + 47;
 }
 
-function missionAt(state, idx, stage) {
-  state.missionIndex = idx;
-  state.mission = { idx, stage, def: MISSIONS[idx], stageCar: null, fightSpawned: false, crackTime: 0 };
+function startMission(game, index) {
+  game.missions.index = index;
+  game.missions.startNext(game);
+  game.missions.dialogue = [];
+  game.missions.dialogueTimer = 0;
 }
 
-export function setupShot(state, n) {
-  const p = state.player;
-  state.cash = 4850; state.respect = 340;
-  state.standing = { cannery: 2, alto: 2, harbor: 3, velvet: 2 };
-  p.health = 86; p.armor = 40;
-
+export function applyShot(game, n) {
+  baseState(game);
   if (n === 1) {
-    // COVER: rainy police chase on the Harborfront straight, roadblock ahead
-    const car = makeCar(2, 1080, 1700, 0, '#ffd23c');
-    car.speed = 281; car.vx = 281; car.nitro = 50; car.health = 72; car.gear = 'D';
-    state.playerCar = car; state.ownedCar = car;
-    p.x = car.x; p.y = car.y; p.angle = 0;
-    state.extraCars.push(car);
-    const copA = spawnPoliceUnit(880, 1652); copA.angle = 0; copA.speed = 262; copA.vx = 262;
-    const copB = spawnPoliceUnit(845, 1758); copB.angle = 0; copB.speed = 255; copB.vx = 255;
-    state.policeUnits.push(copA, copB);
-    const rbA = spawnPoliceUnit(1620, 1676); const rbB = spawnPoliceUnit(1620, 1728);
-    rbA.angle = Math.PI / 2; rbB.angle = Math.PI / 2; rbA.parked = rbB.parked = true;
-    roadblocks.push({ x: 1620, y: 1700, cars: [rbA, rbB], spikes: { x: 1620, y: 1700, w: 14, h: 110 }, fresh: 999 });
-    setWanted(4, 78);
-    missionAt(state, 5, 0);
-    state.clockMinutes = 19 * 60 + 42;
-  }
-
-  if (n === 2) {
-    // car theft on Velvet Row: Nico beside a Roadster, pistol drawn
-    const car = makeCar(4, 3160, 1900, Math.PI / 2, '#ff5fd2');
-    car.parked = true;
-    state.extraCars.push(car);
-    p.x = 3118; p.y = 1932; p.angle = 0.6;
-    combat.weaponIdx = 1;
-    state.ammo.pistol = 48;
-    state.cash = 2130; state.respect = 175;
-    setWanted(1, 35);
-    state.clockMinutes = 21 * 60 + 15;
-    state.shotPrompt = '<b>E</b> — STEAL CAR · Velvet Roadster';
-  }
-
-  if (n === 3) {
-    // mission beat at the pier: Sable's line, the Queen in frame, vault next
-    p.x = FERRY_POS.x - 330; p.y = FERRY_POS.y - 150; p.angle = 0.5;
-    combat.weaponIdx = 0;
-    state.cash = 6120; state.respect = 700;
-    state.standing.harbor = 4;
-    setWanted(2, 44);
-    missionAt(state, 5, 1); // stage: Board the Sirena Queen
-    state.clockMinutes = 20 * 60 + 7;
-    state.shotDialogue = [
-      { speaker: 'SABLE IVERS', line: 'There she rides, Tide — the Sirena Queen. Vault\'s aft, crew\'s light, harbor\'s dark. Go take our season back.' },
+    // COVER: 4-star chase on the Harborfront avenue, roadblock ahead.
+    startMission(game, 5);
+    const car = createCar('sport', 2700, 1750, Math.PI, '#d94f3d');
+    car.driver = 'player';
+    car.speed = 190; // ~118 km/h on the speedometer
+    car.nitro = 0.5;
+    game.parked.push(car);
+    game.enterCar(car, true);
+    game.player.x = car.x;
+    game.player.y = car.y;
+    for (const [x, y] of [[2660, 1580], [2748, 1528]]) {
+      const cop = createCar('police', x, y, Math.PI, '#f2f2f2');
+      cop.driver = 'police';
+      cop.speed = 178;
+      game.police.cops.push(cop);
+    }
+    const blockCars = [];
+    for (const off of [-36, 36]) {
+      const cop = createCar('police', 2700 + off, 2032, Math.PI / 2 + 0.5, '#f2f2f2');
+      cop.driver = 'roadblock';
+      cop.parked = true;
+      blockCars.push(cop);
+      game.police.cops.push(cop);
+    }
+    game.police.roadblocks.push({ x: 2700, y: 2032, cars: blockCars, spikes: { x: 2700, y: 1975, w: 170, h: 10 } });
+    game.police.heat = 78; // 4 stars
+  } else if (n === 2) {
+    // Car theft on Velvet Row, beside the magenta Katana GT.
+    startMission(game, 1);
+    game.cash = 1180;
+    game.respect = 175; // Wheelman
+    game.player.x = 2396;
+    game.player.y = 856;
+    game.player.angle = Math.PI / 2;
+    game.combat.weapon = 'pistol';
+    game.combat.ammo.pistol = 12;
+    game.police.heat = 0;
+    game.promptText = 'E — STEAL KATANA GT';
+  } else if (n === 3) {
+    // Mission beat at Pier 9: Sable on the phone, the ferry ahead.
+    startMission(game, 5);
+    if (game.missions.active) game.missions.active.stage = 1; // "Board the Sirena Queen"
+    game.missions.dialogue = [{
+      who: 'SABLE IVERS',
+      text: 'Tonight the Sirena Queen carries the Marano vault. Board her at Pier 9, crack the vault room, and vanish. Make me proud, Tide.',
+    }];
+    game.missions.dialogueTimer = 999;
+    game.cash = 3900;
+    game.respect = 470;
+    game.player.x = 2190;
+    game.player.y = 2260;
+    game.player.angle = Math.PI;
+    game.police.heat = 34; // 2 stars
+    const cop = createCar('police', 2430, 2210, -Math.PI / 2, '#f2f2f2');
+    cop.driver = 'police';
+    game.police.cops.push(cop);
+  } else if (n === 4) {
+    // Harbor Lights GP mid-race in Harborfront, running 2nd of 4.
+    game.race.start(game);
+    game.race.state = 'run';
+    game.race.time = 47.3;
+    game.race.playerPoint = 7;
+    const car = createCar('coupe', 2500, 2050, Math.PI / 4 + Math.PI / 2, '#e8b93e');
+    car.driver = 'player';
+    car.speed = 168;
+    car.nitro = 0.65;
+    game.parked.push(car);
+    game.enterCar(car, true);
+    game.player.x = car.x;
+    game.player.y = car.y;
+    const spots = [
+      [2650, 2050, 8], // ahead, near the next ring
+      [2600, 1900, 7], // behind on points
+      [1500, 2080, 5], // well behind
     ];
+    game.race.racers.forEach((r, i) => {
+      r.x = spots[i][0];
+      r.y = spots[i][1];
+      r.racePoint = spots[i][2];
+      r.angle = Math.PI / 2;
+    });
+    game.cash = 3120;
+    game.respect = 265;
+    game.police.heat = 0;
   }
-
-  if (n === 4) {
-    // Harborfront street race at dusk: the pack runs north up the harbor
-    // road, cranes and the waterline in frame behind them
-    const car = makeCar(2, 420, 2260, -Math.PI / 2, '#ffd23c');
-    car.speed = 190; car.vy = -190; car.nitro = 64; car.health = 91; car.gear = 'D';
-    state.playerCar = car; state.ownedCar = car;
-    p.x = car.x; p.y = car.y; p.angle = -Math.PI / 2;
-    state.extraCars.push(car);
-    const r1 = makeCar(0, 420, 2050, -Math.PI / 2, '#3cc8ff'); r1.speed = 205; r1.vy = -205; r1.cpIdx = 4;
-    const r2 = makeCar(1, 396, 2450, -Math.PI / 2, '#7dffb0'); r2.speed = 150; r2.vy = -150; r2.cpIdx = 3;
-    const r3 = makeCar(4, 444, 2540, -Math.PI / 2, '#e8e3d8'); r3.speed = 120; r3.vy = -120; r3.cpIdx = 3;
-    state.race = {
-      checkpoints: [
-        { x: 840, y: 1700 }, { x: 1260, y: 1700 }, { x: 1680, y: 1700 }, { x: 1680, y: 2120 },
-        { x: 1260, y: 2120 }, { x: 840, y: 2120 }, { x: 420, y: 2120 }, { x: 320, y: 1700 },
-      ],
-      idx: 3, timer: 47.3, racers: [r1, r2, r3], finished: false, playerDone: 0,
-    };
-    state.extraCars.push(r1, r2, r3);
-    setWanted(0, 0);
-    state.cash = 2740; state.respect = 260;
-    state.clockMinutes = 19 * 60 + 5;
-  }
+  game.hud.update(0.016, game);
 }
 
-// Re-assert the pinned bits the live HUD would otherwise overwrite.
-export function pinShotFrame(state) {
-  if (state.shotPrompt) state.prompt = state.shotPrompt;
-  if (state.shotDialogue) state.dialogue = state.shotDialogue;
-}
+export const SHOT_FILES = ['1-chase.jpg', '2-theft.jpg', '3-ferry.jpg', '4-harbor.jpg'];

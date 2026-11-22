@@ -1,205 +1,313 @@
-// NEON TIDE — Porto Sirena itself: the road grid, city blocks with neon
-// buildings, harbor water, the pier and the Sirena Queen ferry, plus the
-// collision and road queries every other system uses.
+// NEON TIDE — city.js: Porto Sirena's layout and its renderer.
+// Generates the road grid, city blocks with neon-signed buildings, street
+// props (lamps, palms, cranes, the lighthouse), the harbor pier and the
+// casino ferry Sirena Queen. Also owns collision: buildings are AABBs that
+// people and cars slide along, and the harbor water is solid to everyone.
 
-import { WORLD_W, WORLD_H, WATER_Y, DISTRICTS, districtAt, FERRY_POS } from './config.js';
-import { mulberry32, pick, randRange } from './random.js';
+import { WORLD, DISTRICTS, districtAt } from './config.js';
+import { clamp } from './random.js';
 
-export const BLOCK = 420;       // city block pitch
-export const ROAD_W = 96;       // road width between blocks
-const rng = mulberry32(20261122);
+const BUILDING_STYLES = [
+  { roof: '#5b4a5e', trim: '#ff4fd8' }, // Velvet Row magenta
+  { roof: '#4e5a63', trim: '#37e0d4' }, // Harborfront teal
+  { roof: '#63503a', trim: '#ffb347' }, // Cannery amber
+  { roof: '#47624c', trim: '#5dff8f' }, // Alto Verde green
+  { roof: '#555c6e', trim: '#7fb2ff' },
+  { roof: '#6e5548', trim: '#ff8a5c' },
+];
 
-export const city = {
-  buildings: [],   // {x,y,w,h,color,trim,sign,district}
-  props: [],       // {kind,x,y,...} cranes, lighthouse, palms, containers
-  solids: [],      // collision rects (buildings + big props)
-  roadsX: [],      // vertical road center lines
-  roadsY: [],      // horizontal road center lines
-  ferry: null,     // the Sirena Queen: deck rect + vault point
-};
+const SIGN_WORDS = ['SIRENA', 'NEON', 'TIDE', 'VELVET', 'HOTEL', 'BAR', 'CASINO', 'NOODLE', 'PIER 9', 'RADIO', 'MOTEL', 'CLUB', 'DINER', 'PAWN', 'GYM', 'LIQUOR'];
 
-function buildRoads() {
-  for (let x = BLOCK; x < WORLD_W; x += BLOCK) city.roadsX.push(x);
-  for (let y = BLOCK; y < WATER_Y; y += BLOCK) city.roadsY.push(y);
-}
+export function buildCity(rng) {
+  const buildings = [];
+  const props = [];
+  const half = WORLD.roadWidth / 2;
 
-const SIGNS = ['SIRENA', 'VELA BAR', 'TIDEWORKS', 'NOODLE 9', 'HOTEL MAR', 'PAWN', 'CLUB ONYX',
-  'FISH CO', 'MOTO', 'CAFÉ LUME', 'KTV NOVA', 'DOCK 7', 'VELVET', 'ORO GYM', '24H MART'];
-
-function buildBlocks() {
-  for (let bx = 0; bx < WORLD_W; bx += BLOCK) {
-    for (let by = 0; by < WATER_Y; by += BLOCK) {
-      const cx = bx + BLOCK / 2, cy = by + BLOCK / 2;
-      const d = districtAt(cx, cy);
-      const inner = ROAD_W / 2 + 14;
-      const span = BLOCK - ROAD_W - 28;
-      // 2x2 buildings per block, jittered, leaving a plaza corner sometimes
-      for (let i = 0; i < 2; i++) {
-        for (let j = 0; j < 2; j++) {
-          if (rng() < 0.14) continue; // plaza / parking gap
-          const w = span / 2 - randRange(rng, 4, 26);
-          const h = span / 2 - randRange(rng, 4, 26);
-          const x = bx + inner + i * (span / 2) + randRange(rng, 0, 10);
-          const y = by + inner + j * (span / 2) + randRange(rng, 0, 10);
-          const b = {
+  // Blocks live between the roads; each block holds 2-6 buildings.
+  for (let i = 0; i < WORLD.verticalRoads.length - 1; i++) {
+    for (let j = 0; j < WORLD.horizontalRoads.length - 1; j++) {
+      const bx = WORLD.verticalRoads[i] + half + 26;
+      const by = WORLD.horizontalRoads[j] + half + 26;
+      const bw = WORLD.verticalRoads[i + 1] - WORLD.verticalRoads[i] - WORLD.roadWidth - 52;
+      const bh = WORLD.horizontalRoads[j + 1] - WORLD.horizontalRoads[j] - WORLD.roadWidth - 52;
+      const cols = rng.int(2, 3);
+      const rows = rng.int(2, 3);
+      for (let cx = 0; cx < cols; cx++) {
+        for (let cy = 0; cy < rows; cy++) {
+          if (rng.chance(0.14)) continue; // empty lot / parking
+          const w = (bw / cols) * rng.float(0.62, 0.86);
+          const h = (bh / rows) * rng.float(0.62, 0.86);
+          const x = bx + (bw / cols) * cx + (bw / cols - w) / 2;
+          const y = by + (bh / rows) * cy + (bh / rows - h) / 2;
+          const d = districtAt(x + w / 2, y + h / 2);
+          const style = BUILDING_STYLES[DISTRICTS.indexOf(d)] ?? rng.pick(BUILDING_STYLES);
+          buildings.push({
             x, y, w, h,
-            color: pick(rng, d.roof),
-            trim: d.trim,
-            sign: rng() < 0.4 ? pick(rng, SIGNS) : '',
+            roof: style.roof,
+            trim: d.neon,
             district: d.id,
-            floors: 2 + Math.floor(rng() * 5),
-          };
-          city.buildings.push(b);
-          city.solids.push({ x, y, w, h });
+            sign: rng.chance(0.55) ? rng.pick(SIGN_WORDS) : null,
+            floors: rng.int(2, 9),
+            seed: rng.int(0, 99999),
+          });
         }
-      }
-      // street props: palms in Alto Verde, containers in the Cannery Yards
-      if (d.id === 'alto' && rng() < 0.7) city.props.push({ kind: 'palm', x: bx + 30, y: by + 30 });
-      if (d.id === 'cannery' && rng() < 0.6) {
-        const px = bx + randRange(rng, 40, BLOCK - 90), py = by + randRange(rng, 40, BLOCK - 70);
-        city.props.push({ kind: 'container', x: px, y: py, color: pick(rng, ['#a8552f', '#2f6ea8', '#7d8a3a']) });
-        city.solids.push({ x: px, y: py, w: 56, h: 24 });
       }
     }
   }
-}
 
-function buildHarbor() {
-  // cranes along the waterline, a lighthouse on the west point
-  for (let x = 300; x < WORLD_W - 200; x += 620) city.props.push({ kind: 'crane', x, y: WATER_Y - 30 });
-  city.props.push({ kind: 'lighthouse', x: 130, y: WATER_Y + 120 });
-  city.solids.push({ x: 104, y: WATER_Y + 94, w: 52, h: 52 });
-  // the Sirena Queen: a casino ferry moored at the Harborfront pier
-  const fx = FERRY_POS.x - 210, fy = FERRY_POS.y - 60;
-  city.ferry = { x: fx, y: fy, w: 420, h: 120, vault: { x: FERRY_POS.x + 130, y: FERRY_POS.y }, deck: { x: fx, y: fy, w: 420, h: 120 } };
-}
-
-export function buildCity() {
-  buildRoads();
-  buildBlocks();
-  buildHarbor();
-  return city;
-}
-
-// --- queries ---------------------------------------------------------------
-
-export function isWater(x, y) { return y > WATER_Y && !(city.ferry && x > city.ferry.x && x < city.ferry.x + city.ferry.w && y > city.ferry.y && y < city.ferry.y + city.ferry.h); }
-
-export function collideRects(x, y, r) {
-  // returns true when a circle at x,y with radius r hits a solid or water
-  if (x < r || y < r || x > WORLD_W - r || y > WORLD_H - r) return true;
-  if (isWater(x, y)) return true;
-  for (const s of city.solids) {
-    if (x + r > s.x && x - r < s.x + s.w && y + r > s.y && y - r < s.y + s.h) return true;
+  // Street lamps along every road, palms on the harbor + velvet sidewalks.
+  for (const rx of WORLD.verticalRoads) {
+    for (let y = 140; y < WORLD.waterY - 40; y += 190) {
+      props.push({ type: 'lamp', x: rx - half - 12, y });
+      props.push({ type: 'lamp', x: rx + half + 12, y: y + 90 });
+    }
   }
+  for (let x = 200; x < WORLD.width - 100; x += 150) {
+    if (rng.chance(0.7)) props.push({ type: 'palm', x: x + rng.float(-24, 24), y: WORLD.waterY - rng.float(46, 90) });
+  }
+  for (let i = 0; i < 26; i++) {
+    props.push({ type: 'palm', x: rng.float(1900, 3500), y: rng.float(120, 1250) });
+  }
+  // Harbor cranes + containers + the lighthouse on the east point.
+  for (const cx of [2050, 2450, 3050]) props.push({ type: 'crane', x: cx, y: WORLD.waterY - 130 });
+  for (let i = 0; i < 22; i++) {
+    props.push({ type: 'container', x: rng.float(1900, 3450), y: rng.float(WORLD.waterY - 210, WORLD.waterY - 60), color: rng.pick(['#b3502e', '#2e6db3', '#3f9e57', '#b3a02e']) });
+  }
+  props.push({ type: 'lighthouse', x: 3480, y: WORLD.waterY - 60 });
+
+  const garage = { x: 900, y: 900, w: 150, h: 110 }; // Cannery Yards corner lot
+  const ferry = { x: 2040, y: WORLD.waterY + 40, w: 300, h: 130, name: 'SIRENA QUEEN' };
+  const pier = { x: 2130, y: WORLD.waterY - 170, w: 120, h: 220 };
+  const raceStart = { x: 2700, y: 2100 };
+  const hideout = { x: 300, y: 2100 };
+  const hospital = { x: 1500, y: 300 };
+
+  return { buildings, props, garage, ferry, pier, raceStart, hideout, hospital };
+}
+
+export function isWater(x, y) {
+  return y > WORLD.waterY && !(x > 2100 && x < 2280 && y < WORLD.waterY + 60);
+}
+
+export function isRoad(x, y) {
+  const half = WORLD.roadWidth / 2;
+  for (const rx of WORLD.verticalRoads) if (Math.abs(x - rx) <= half) return true;
+  for (const ry of WORLD.horizontalRoads) if (Math.abs(y - ry) <= half) return true;
   return false;
 }
 
-export function nearestRoadX(x) {
-  let best = city.roadsX[0], bd = Infinity;
-  for (const rx of city.roadsX) { const d = Math.abs(rx - x); if (d < bd) { bd = d; best = rx; } }
-  return best;
-}
-export function nearestRoadY(y) {
-  let best = city.roadsY[0], bd = Infinity;
-  for (const ry of city.roadsY) { const d = Math.abs(ry - y); if (d < bd) { bd = d; best = ry; } }
-  return best;
-}
-export function onRoad(x, y) {
-  const half = ROAD_W / 2;
-  for (const rx of city.roadsX) if (Math.abs(rx - x) < half) return true;
-  for (const ry of city.roadsY) if (Math.abs(ry - y) < half) return true;
-  return y > WATER_Y - 40; // the pier apron counts as drivable
+export function collideBuildings(city, e, radius) {
+  for (const b of city.buildings) {
+    const nx = clamp(e.x, b.x, b.x + b.w);
+    const ny = clamp(e.y, b.y, b.y + b.h);
+    const dx = e.x - nx;
+    const dy = e.y - ny;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < radius * radius) {
+      if (d2 === 0) {
+        e.x = b.x - radius;
+        continue;
+      }
+      const d = Math.sqrt(d2);
+      e.x = nx + (dx / d) * radius;
+      e.y = ny + (dy / d) * radius;
+    }
+  }
+  e.x = clamp(e.x, radius, WORLD.width - radius);
+  // The harbor is solid — except the Sirena Queen's deck, which the player
+  // boards from the pier during the finale.
+  const f = city.ferry;
+  const onFerry = e.x > f.x - 6 && e.x < f.x + f.w + 6;
+  const maxY = onFerry ? f.y + f.h - radius : WORLD.waterY + 30 - radius;
+  e.y = clamp(e.y, radius, maxY);
 }
 
-// --- drawing ---------------------------------------------------------------
+export function buildingAt(city, x, y) {
+  for (const b of city.buildings) {
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b;
+  }
+  return null;
+}
 
-function drawBuilding(ctx, b, t) {
-  // wet-street sheen under the block, then the roof with a neon trim edge
+// ---- rendering ------------------------------------------------------------
+
+function drawBuilding(ctx, b) {
+  // Drop shadow + body + roof slab + neon trim + window grid + sign.
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.fillRect(b.x + 7, b.y + 9, b.w, b.h);
-  ctx.fillStyle = b.color;
+  ctx.fillStyle = '#2c2833';
+  ctx.fillRect(b.x - 3, b.y - 3, b.w + 6, b.h + 6);
+  ctx.fillStyle = b.roof;
   ctx.fillRect(b.x, b.y, b.w, b.h);
   ctx.strokeStyle = b.trim;
-  ctx.globalAlpha = 0.55 + 0.2 * Math.sin(t * 1.7 + b.x);
+  ctx.globalAlpha = 0.75;
   ctx.lineWidth = 2;
   ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
   ctx.globalAlpha = 1;
-  // window grid
-  ctx.fillStyle = 'rgba(255,236,170,0.5)';
-  const cols = Math.max(2, Math.floor(b.w / 26)), rows = Math.max(2, Math.floor(b.h / 26));
-  for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
-    if ((i * 7 + j * 13 + b.floors) % 3 === 0) continue;
-    ctx.fillRect(b.x + 7 + i * 24, b.y + 7 + j * 24, 9, 6);
+  // Deterministic lit windows from the building seed.
+  let s = b.seed;
+  const rnd = () => {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+  const cols = Math.max(2, Math.floor(b.w / 26));
+  const rows = Math.max(2, Math.floor(b.h / 26));
+  for (let i = 0; i < cols; i++) {
+    for (let j = 0; j < rows; j++) {
+      if (rnd() < 0.42) {
+        ctx.fillStyle = rnd() < 0.8 ? 'rgba(255,214,140,0.85)' : 'rgba(140,220,255,0.85)';
+        ctx.fillRect(b.x + 6 + i * ((b.w - 12) / cols), b.y + 6 + j * ((b.h - 12) / rows), 7, 5);
+      }
+    }
   }
-  if (b.sign) {
-    ctx.font = '700 11px "Segoe UI", Arial, sans-serif';
-    ctx.fillStyle = b.trim;
+  if (b.sign && b.w > 90) {
+    ctx.font = 'bold 13px system-ui, sans-serif';
     ctx.textAlign = 'center';
+    ctx.fillStyle = b.trim;
+    ctx.shadowColor = b.trim;
+    ctx.shadowBlur = 9;
     ctx.fillText(b.sign, b.x + b.w / 2, b.y + b.h / 2 + 4);
+    ctx.shadowBlur = 0;
   }
 }
 
-export function drawCity(ctx, cam, t) {
-  const vx0 = cam.x - 40, vy0 = cam.y - 40, vx1 = cam.x + cam.w + 40, vy1 = cam.y + cam.h + 40;
-  // ground per district quadrant
+export function drawCity(ctx, city, cam, vw, vh) {
+  const x0 = Math.max(0, cam.x - 40);
+  const y0 = Math.max(0, cam.y - 40);
+  const x1 = Math.min(WORLD.width, cam.x + vw + 40);
+  const y1 = Math.min(WORLD.height, cam.y + vh + 40);
+
+  // District ground tints.
   for (const d of DISTRICTS) {
     ctx.fillStyle = d.ground;
-    ctx.fillRect(Math.max(d.x0, vx0), Math.max(d.y0, vy0), Math.min(d.x1, vx1) - Math.max(d.x0, vx0), Math.min(d.y1, vy1) - Math.max(d.y0, vy0));
+    ctx.fillRect(Math.max(d.x0, x0), Math.max(d.y0, y0), Math.min(d.x1, x1) - Math.max(d.x0, x0), Math.min(d.y1, y1) - Math.max(d.y0, y0));
   }
-  // harbor water with slow moving glints
-  ctx.fillStyle = '#0d2f45';
-  ctx.fillRect(vx0, Math.max(WATER_Y, vy0), vx1 - vx0, vy1 - Math.max(WATER_Y, vy0));
-  ctx.strokeStyle = 'rgba(110,231,255,0.25)';
-  ctx.lineWidth = 2;
-  for (let x = Math.floor(vx0 / 90) * 90; x < vx1; x += 90) {
-    const yy = WATER_Y + 40 + ((x * 13) % 200);
-    if (yy > vy0 && yy < vy1) { ctx.beginPath(); ctx.moveTo(x + Math.sin(t + x) * 8, yy); ctx.lineTo(x + 34, yy); ctx.stroke(); }
+  // Sidewalk aprons around blocks.
+  ctx.fillStyle = '#585c60';
+  const half = WORLD.roadWidth / 2;
+  for (const rx of WORLD.verticalRoads) ctx.fillRect(rx - half - 16, 0, WORLD.roadWidth + 32, WORLD.waterY);
+  for (const ry of WORLD.horizontalRoads) ctx.fillRect(0, ry - half - 16, WORLD.width, WORLD.roadWidth + 32);
+  // Asphalt + lane dashes + wet sheen.
+  ctx.fillStyle = '#33373d';
+  for (const rx of WORLD.verticalRoads) ctx.fillRect(rx - half, 0, WORLD.roadWidth, WORLD.waterY);
+  for (const ry of WORLD.horizontalRoads) ctx.fillRect(0, ry - half, WORLD.width, WORLD.roadWidth);
+  ctx.strokeStyle = 'rgba(240,220,120,0.55)';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([26, 30]);
+  for (const rx of WORLD.verticalRoads) {
+    ctx.beginPath(); ctx.moveTo(rx, 0); ctx.lineTo(rx, WORLD.waterY); ctx.stroke();
   }
-  // roads: verticals then horizontals, with wet center dashes
-  ctx.fillStyle = '#20262e';
-  for (const rx of city.roadsX) if (rx > vx0 - ROAD_W && rx < vx1 + ROAD_W) ctx.fillRect(rx - ROAD_W / 2, Math.max(0, vy0), ROAD_W, Math.min(WATER_Y + 60, vy1) - Math.max(0, vy0));
-  for (const ry of city.roadsY) if (ry > vy0 - ROAD_W && ry < vy1 + ROAD_W) ctx.fillRect(Math.max(0, vx0), ry - ROAD_W / 2, Math.min(WORLD_W, vx1) - Math.max(0, vx0), ROAD_W);
-  ctx.strokeStyle = 'rgba(255,220,120,0.5)';
-  ctx.lineWidth = 2; ctx.setLineDash([18, 22]);
-  for (const rx of city.roadsX) if (rx > vx0 && rx < vx1) { ctx.beginPath(); ctx.moveTo(rx, Math.max(0, vy0)); ctx.lineTo(rx, Math.min(WATER_Y + 60, vy1)); ctx.stroke(); }
-  for (const ry of city.roadsY) if (ry > vy0 && ry < vy1) { ctx.beginPath(); ctx.moveTo(Math.max(0, vx0), ry); ctx.lineTo(Math.min(WORLD_W, vx1), ry); ctx.stroke(); }
+  for (const ry of WORLD.horizontalRoads) {
+    ctx.beginPath(); ctx.moveTo(0, ry); ctx.lineTo(WORLD.width, ry); ctx.stroke();
+  }
   ctx.setLineDash([]);
-  // sidewalks: pale strips along each block edge come free from the ground gap
-  for (const b of city.buildings) if (b.x + b.w > vx0 && b.x < vx1 && b.y + b.h > vy0 && b.y < vy1) drawBuilding(ctx, b, t);
-  // props
-  for (const p of city.props) {
-    if (p.x < vx0 - 80 || p.x > vx1 + 80 || p.y < vy0 - 80 || p.y > vy1 + 80) continue;
-    if (p.kind === 'palm') {
-      ctx.strokeStyle = '#3f6b35'; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 4, p.y - 16); ctx.stroke();
-      ctx.strokeStyle = '#57a047'; ctx.lineWidth = 3;
-      for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2 + 0.5; ctx.beginPath(); ctx.moveTo(p.x + 4, p.y - 16); ctx.lineTo(p.x + 4 + Math.cos(a) * 15, p.y - 16 + Math.sin(a) * 7); ctx.stroke(); }
-    } else if (p.kind === 'container') {
-      ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, 56, 24);
-      ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.strokeRect(p.x + 1, p.y + 1, 54, 22);
-    } else if (p.kind === 'crane') {
-      ctx.strokeStyle = '#c9862f'; ctx.lineWidth = 6;
-      ctx.beginPath(); ctx.moveTo(p.x, p.y + 60); ctx.lineTo(p.x, p.y - 70); ctx.lineTo(p.x + 90, p.y - 70); ctx.stroke();
-      ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.x + 78, p.y - 70); ctx.lineTo(p.x + 78, p.y - 30); ctx.stroke();
-    } else if (p.kind === 'lighthouse') {
-      ctx.fillStyle = '#e8e3d8'; ctx.fillRect(p.x - 13, p.y - 40, 26, 80);
-      ctx.fillStyle = '#d94f3d'; ctx.fillRect(p.x - 13, p.y - 14, 26, 12);
-      ctx.fillStyle = 'rgba(255,240,170,0.9)';
-      ctx.beginPath(); ctx.arc(p.x, p.y - 48, 9 + Math.sin(t * 2) * 2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(160,200,255,0.05)';
+  for (const rx of WORLD.verticalRoads) ctx.fillRect(rx - half, 0, WORLD.roadWidth, WORLD.waterY);
+
+  // Harbor water with animated-looking sparkle rows (static offsets).
+  if (y1 > WORLD.waterY) {
+    const g = ctx.createLinearGradient(0, WORLD.waterY, 0, WORLD.height);
+    g.addColorStop(0, '#14425a');
+    g.addColorStop(1, '#081c2c');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, WORLD.waterY, WORLD.width, WORLD.height - WORLD.waterY);
+    ctx.fillStyle = 'rgba(120,220,255,0.18)';
+    for (let x = 30; x < WORLD.width; x += 90) {
+      for (let y = WORLD.waterY + 26; y < WORLD.height - 10; y += 44) {
+        ctx.fillRect(x + ((y * 7) % 40), y, 34, 3);
+      }
     }
   }
-  // the Sirena Queen
+  // Pier + ferry.
+  ctx.fillStyle = '#6b5a44';
+  ctx.fillRect(city.pier.x, city.pier.y, city.pier.w, city.pier.h);
+  ctx.fillStyle = '#7d6a50';
+  for (let y = city.pier.y + 8; y < city.pier.y + city.pier.h; y += 22) ctx.fillRect(city.pier.x, y, city.pier.w, 3);
   const f = city.ferry;
-  if (f && f.x + f.w > vx0 && f.x < vx1 && f.y + f.h > vy0 && f.y < vy1) {
-    ctx.fillStyle = '#12222e'; ctx.fillRect(f.x - 8, f.y + 10, f.w + 16, f.h);
-    ctx.fillStyle = '#e8eef2'; ctx.fillRect(f.x, f.y, f.w, f.h);
-    ctx.fillStyle = '#20303c'; ctx.fillRect(f.x + 26, f.y + 16, f.w - 52, f.h - 32);
-    ctx.fillStyle = '#ffd76a';
-    for (let x = f.x + 44; x < f.x + f.w - 30; x += 30) { ctx.beginPath(); ctx.arc(x, f.y + 40, 5, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(x, f.y + 78, 5, 0, Math.PI * 2); ctx.fill(); }
-    ctx.font = '800 19px "Segoe UI", Arial, sans-serif'; ctx.fillStyle = '#ff5fd2'; ctx.textAlign = 'center';
-    ctx.fillText('SIRENA QUEEN', f.x + f.w / 2, f.y + 66);
-    ctx.fillStyle = '#ffd23c'; ctx.fillRect(f.vault.x - 12, f.vault.y - 12, 24, 24);
-    ctx.fillStyle = '#20303c'; ctx.font = '800 14px Arial'; ctx.fillText('$', f.vault.x, f.vault.y + 5);
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(f.x + 8, f.y + 10, f.w, f.h);
+  ctx.fillStyle = '#e8e4da';
+  ctx.fillRect(f.x, f.y, f.w, f.h);
+  ctx.fillStyle = '#c33';
+  ctx.fillRect(f.x, f.y + f.h - 22, f.w, 10);
+  ctx.fillStyle = '#ffd76a';
+  for (let x = f.x + 14; x < f.x + f.w - 14; x += 26) ctx.fillRect(x, f.y + 22, 13, 10);
+  ctx.fillStyle = '#37e0d4';
+  ctx.font = 'bold 17px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = '#37e0d4';
+  ctx.shadowBlur = 10;
+  ctx.fillText(f.name, f.x + f.w / 2, f.y + 58);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#22252b';
+  ctx.fillRect(f.x + f.w / 2 - 34, f.y - 14, 68, 16); // gangway block
+
+  // Buildings (culled to view).
+  for (const b of city.buildings) {
+    if (b.x + b.w < x0 || b.x > x1 || b.y + b.h < y0 || b.y > y1) continue;
+    drawBuilding(ctx, b);
   }
+
+  // Props.
+  for (const p of city.props) {
+    if (p.x < x0 - 60 || p.x > x1 + 60 || p.y < y0 - 60 || p.y > y1 + 60) continue;
+    if (p.type === 'lamp') {
+      ctx.fillStyle = '#222';
+      ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+      ctx.fillStyle = 'rgba(255,190,90,0.9)';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,180,80,0.10)';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 26, 0, Math.PI * 2); ctx.fill();
+    } else if (p.type === 'palm') {
+      ctx.strokeStyle = '#3f7a3a';
+      ctx.lineWidth = 3;
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + Math.cos(a) * 15, p.y + Math.sin(a) * 15);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#5a4632';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2); ctx.fill();
+    } else if (p.type === 'crane') {
+      ctx.strokeStyle = '#c96a2e';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y + 90); ctx.lineTo(p.x, p.y); ctx.lineTo(p.x + 95, p.y);
+      ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(p.x + 70, p.y); ctx.lineTo(p.x + 70, p.y + 34); ctx.stroke();
+      ctx.fillStyle = '#888';
+      ctx.fillRect(p.x + 60, p.y + 34, 20, 14);
+    } else if (p.type === 'container') {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, 52, 22);
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p.x + 0.5, p.y + 0.5, 51, 21);
+    } else if (p.type === 'lighthouse') {
+      ctx.fillStyle = '#e8e4da';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 17, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#c33';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 17, Math.PI * 0.15, Math.PI * 0.45); ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, 17, Math.PI * 1.15, Math.PI * 1.45); ctx.fill();
+      ctx.fillStyle = 'rgba(255,240,170,0.16)';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 64, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffe9a0';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // Garage lot.
+  const gr = city.garage;
+  ctx.fillStyle = '#3c4046';
+  ctx.fillRect(gr.x - gr.w / 2, gr.y - gr.h / 2, gr.w, gr.h);
+  ctx.strokeStyle = '#ffb347';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(gr.x - gr.w / 2, gr.y - gr.h / 2, gr.w, gr.h);
+  ctx.fillStyle = '#ffb347';
+  ctx.font = 'bold 15px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('GARAGE', gr.x, gr.y + 5);
 }

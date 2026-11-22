@@ -1,141 +1,232 @@
-// NEON TIDE — vehicles: arcade car physics (accel, drift, nitro, damage),
-// the parked cars scattered for stealing, and the car renderer every driver
-// (player, traffic, police, racers) shares.
+// NEON TIDE — vehicles.js: car factory, arcade driving physics, car drawing.
+// Cars are top-down rectangles with a roof, glass, wheels and headlights;
+// police cars get the PSPD livery and a light bar. Physics is deliberately
+// arcade: throttle, brake/reverse, handbrake drift, nitro, building and
+// car-to-car bumps that trade paint and health.
 
-import { CAR_MODELS } from './config.js';
-import { mulberry32, pick, clamp, angleDelta } from './random.js';
-import { city, onRoad } from './city.js';
+import { VEHICLE_TYPES } from './config.js';
+import { clamp, wrapAngle } from './random.js';
+import { collideBuildings } from './city.js';
 
 let nextCarId = 1;
 
-export function makeCar(modelIdx, x, y, angle, color) {
-  const m = CAR_MODELS[modelIdx];
+export function createCar(type, x, y, angle, color) {
+  const spec = VEHICLE_TYPES[type];
   return {
-    id: nextCarId++, model: m, modelIdx,
-    x, y, angle, speed: 0, steer: 0,
-    w: m.w, h: m.h, color: color || m.colors[0],
-    health: 100, nitro: 60, gear: 'N', drift: 0,
-    police: false, driver: null, parked: false, wrecked: false,
+    id: nextCarId++,
+    type, spec,
+    x, y, angle,
+    speed: 0,
+    steer: 0,
+    color,
+    health: spec.health,
+    maxHealth: spec.health,
+    nitro: 0.5,
+    driver: null, // 'player' | 'traffic' | 'police' | 'racer' | null (parked)
+    parked: false,
+    lightsOn: true,
+    sirenPhase: Math.random() * Math.PI * 2,
+    tireDamage: 0, // 0..1 from spike strips
+    wrecked: false,
   };
 }
 
-export function spawnParkedCars(count) {
-  const rng = mulberry32(777);
-  const cars = [];
-  let guard = 0;
-  while (cars.length < count && guard++ < count * 40) {
-    const rx = pick(rng, city.roadsX), ry = pick(rng, city.roadsY);
-    const vertical = rng() < 0.5;
-    const x = vertical ? rx + (rng() < 0.5 ? -34 : 34) : rx + (rng() - 0.5) * 1600;
-    const y = vertical ? ry + (rng() - 0.5) * 1600 : ry + (rng() < 0.5 ? -34 : 34);
-    if (!onRoad(x, y) || y > 2560) continue;
-    const car = makeCar(Math.floor(rng() * CAR_MODELS.length), x, y, vertical ? Math.PI / 2 : 0);
-    car.parked = true;
-    car.color = pick(rng, car.model.colors);
-    cars.push(car);
+export function applyUpgrades(car, upgrades) {
+  const e = upgrades.engine ?? 0;
+  const a = upgrades.armor ?? 0;
+  const n = upgrades.nitro ?? 0;
+  car.maxHealth = car.spec.health + a * 40;
+  car.health = Math.min(car.health, car.maxHealth);
+  car.tune = { accelMul: 1 + e * 0.12, topMul: 1 + e * 0.12, nitroLevel: n };
+}
+
+export function carRadius(car) {
+  return car.spec.h * 0.42;
+}
+
+// input: {throttle -1..1, steer -1..1, handbrake, nitro}
+export function updateCar(car, input, dt, city) {
+  if (car.wrecked) {
+    car.speed = 0;
+    return;
   }
-  return cars;
-}
+  const tune = car.tune ?? { accelMul: 1, topMul: 1, nitroLevel: 0 };
+  const tireMul = 1 - car.tireDamage * 0.45;
+  const topSpeed = car.spec.maxSpeed * tune.topMul * tireMul;
+  const accel = car.spec.accel * tune.accelMul;
 
-// One physics step. input: {throttle -1..1, steer -1..1, brake, nitro}
-export function stepCar(car, input, dt, upgrades) {
-  const eng = 1 + 0.12 * (upgrades ? upgrades.engine : 0);
-  const top = car.model.top * eng * (car.wrecked ? 0.3 : 1);
-  const nitroBoost = input.nitro && car.nitro > 0 && input.throttle > 0;
-  if (nitroBoost) car.nitro = Math.max(0, car.nitro - 34 * dt);
-  else car.nitro = Math.min(100, car.nitro + 5 * dt);
-  const boost = nitroBoost ? 1.45 : 1;
-
-  if (input.throttle > 0) car.speed += car.model.accel * eng * boost * dt;
-  else if (input.throttle < 0) car.speed -= (car.speed > 10 ? 420 : 180) * dt;
-  else car.speed -= car.speed * 0.7 * dt; // engine braking / roll
-  car.speed -= car.speed * 0.35 * dt;      // drag
-  car.speed = clamp(car.speed, -140, top * boost);
-
-  const speedRatio = clamp(Math.abs(car.speed) / 200, 0, 1);
-  const turnRate = (input.brake ? 2.5 : 1.9) * speedRatio;
-  car.steer = input.steer;
-  if (Math.abs(car.speed) > 4) {
-    car.angle += input.steer * turnRate * dt * Math.sign(car.speed);
+  let boosting = false;
+  if (input.nitro && tune.nitroLevel > 0 && car.nitro > 0.02 && input.throttle > 0) {
+    boosting = true;
+    car.nitro = Math.max(0, car.nitro - dt * 0.45);
+    car.speed += accel * 1.15 * dt;
+  } else {
+    car.nitro = Math.min(1, car.nitro + dt * 0.03);
   }
-  car.drift = input.brake && Math.abs(car.speed) > 160 ? Math.min(1, car.drift + dt * 4) : Math.max(0, car.drift - dt * 3);
 
-  const grip = input.brake ? 0.86 : 0.97;
-  if (!car.vx) { car.vx = 0; car.vy = 0; }
-  const fx = Math.cos(car.angle) * car.speed, fy = Math.sin(car.angle) * car.speed;
-  car.vx = car.vx * (1 - grip) + fx * grip;
-  car.vy = car.vy * (1 - grip) + fy * grip;
-  car.x += car.vx * dt;
-  car.y += car.vy * dt;
-  car.gear = car.speed > 8 ? 'D' : car.speed < -8 ? 'R' : 'N';
-  car.boosting = nitroBoost;
-  return car;
+  if (input.throttle > 0) {
+    car.speed += accel * input.throttle * dt * (car.speed < 0 ? 2.2 : 1);
+  } else if (input.throttle < 0) {
+    car.speed += accel * input.throttle * dt * (car.speed > 0 ? 2.4 : 0.55);
+  }
+  const drag = input.handbrake ? 2.6 : 0.55;
+  car.speed -= car.speed * drag * dt * 0.42;
+  if (!input.throttle && Math.abs(car.speed) < 4) car.speed = 0;
+  car.speed = clamp(car.speed, -topSpeed * 0.38, topSpeed * (boosting ? 1.3 : 1));
+
+  const speedRatio = clamp(Math.abs(car.speed) / 120, 0, 1);
+  const steerTarget = (input.steer ?? 0) * 0.62 * speedRatio;
+  car.steer += (steerTarget - car.steer) * Math.min(1, dt * 7);
+  const drift = input.handbrake ? 1.7 : 1;
+  car.angle += car.steer * (car.speed / 46) * car.spec.grip * 0.24 * drift * dt * 3.2;
+  car.angle = wrapAngle(car.angle);
+
+  const vx = Math.cos(car.angle - Math.PI / 2) * car.speed;
+  const vy = Math.sin(car.angle - Math.PI / 2) * car.speed;
+  car.x += vx * dt;
+  car.y += vy * dt;
+  const before = { x: car.x, y: car.y };
+  collideBuildings(city, car, carRadius(car) * 0.72);
+  if (Math.abs(car.x - before.x) + Math.abs(car.y - before.y) > 0.6 && Math.abs(car.speed) > 90) {
+    damageCar(car, Math.abs(car.speed) * 0.045, null);
+    car.speed *= -0.25;
+  }
+  car.boosting = boosting;
 }
 
-export function carSpeedKmh(car) { return Math.round(Math.abs(car.speed) * 0.42); }
-
-export function damageCar(car, amount) {
-  car.health = Math.max(0, car.health - amount);
-  if (car.health <= 0) car.wrecked = true;
+export function damageCar(car, amount, sparks) {
+  if (car.wrecked) return;
+  car.health -= amount;
+  if (sparks) sparks.push({ x: car.x, y: car.y, n: 6 });
+  if (car.health <= 0) {
+    car.health = 0;
+    car.wrecked = true;
+    car.speed = 0;
+  }
 }
 
-export function drawCar(ctx, car, t) {
+export function bumpCars(a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const d = Math.hypot(dx, dy);
+  const min = carRadius(a) * 0.8 + carRadius(b) * 0.8;
+  if (d === 0 || d >= min) return 0;
+  const push = (min - d) / 2;
+  const nx = dx / d;
+  const ny = dy / d;
+  a.x -= nx * push;
+  a.y -= ny * push;
+  b.x += nx * push;
+  b.y += ny * push;
+  const impact = Math.abs(a.speed - b.speed);
+  const transfer = (a.speed + b.speed) / 2;
+  if (Math.abs(a.speed) > Math.abs(b.speed)) b.speed = transfer * 0.9;
+  else a.speed = transfer * 0.9;
+  if (impact > 60) {
+    damageCar(a, impact * 0.05, null);
+    damageCar(b, impact * 0.05, null);
+  }
+  return impact;
+}
+
+export function speedKmh(car) {
+  return Math.round(Math.abs(car.speed) * 0.62);
+}
+
+export function gearOf(car) {
+  if (car.speed < -2) return 'R';
+  const s = Math.abs(car.speed);
+  if (s < 4) return 'N';
+  return String(Math.min(6, 1 + Math.floor(s / 68)));
+}
+
+export function drawCar(ctx, car, time) {
+  const { w, h } = car.spec;
   ctx.save();
   ctx.translate(car.x, car.y);
   ctx.rotate(car.angle);
-  const w = car.w, h = car.h;
-  // shadow + drift smoke anchor
-  ctx.fillStyle = 'rgba(0,0,0,0.4)';
-  ctx.fillRect(-w / 2 + 3, -h / 2 + 4, w, h);
-  // body
-  ctx.fillStyle = car.wrecked ? '#3a3a3a' : car.color;
-  roundRect(ctx, -w / 2, -h / 2, w, h, 6); ctx.fill();
-  // cabin
-  ctx.fillStyle = car.police ? '#101418' : 'rgba(16,26,36,0.9)';
-  roundRect(ctx, -w * 0.16, -h * 0.36, w * 0.36, h * 0.72, 4); ctx.fill();
-  // windshield sheen
-  ctx.fillStyle = 'rgba(160,230,255,0.35)';
-  ctx.fillRect(w * 0.14, -h * 0.32, 4, h * 0.64);
-  if (car.police) {
-    ctx.fillStyle = '#e8eef2';
-    ctx.fillRect(-w / 2, -h / 2, w * 0.3, h);
-    ctx.fillRect(w * 0.24, -h / 2, w * 0.26, h);
-    // light bar: alternating red/blue flash
-    const phase = Math.floor(t * 6) % 2;
-    ctx.fillStyle = phase ? '#ff3b30' : '#3c8dff';
-    ctx.fillRect(-6, -h * 0.3, 12, h * 0.28);
-    ctx.fillStyle = phase ? '#3c8dff' : '#ff3b30';
-    ctx.fillRect(-6, h * 0.04, 12, h * 0.28);
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.font = '800 8px Arial'; ctx.textAlign = 'center';
-    ctx.fillText('POLICE', 0, 3);
-  }
-  // headlights
-  ctx.fillStyle = '#fff6c9';
-  ctx.fillRect(w / 2 - 3, -h / 2 + 2, 3, 5);
-  ctx.fillRect(w / 2 - 3, h / 2 - 7, 3, 5);
-  ctx.fillStyle = 'rgba(255,80,60,0.9)';
-  ctx.fillRect(-w / 2, -h / 2 + 2, 3, 5);
-  ctx.fillRect(-w / 2, h / 2 - 7, 3, 5);
-  // nitro flame
-  if (car.boosting) {
-    ctx.fillStyle = 'rgba(90,200,255,0.85)';
+  // Headlight cones (dusk).
+  if (car.lightsOn && !car.wrecked) {
+    const grad = ctx.createLinearGradient(0, -h / 2, 0, -h / 2 - 120);
+    grad.addColorStop(0, 'rgba(255,240,190,0.20)');
+    grad.addColorStop(1, 'rgba(255,240,190,0)');
+    ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.moveTo(-w / 2, -4); ctx.lineTo(-w / 2 - 16 - Math.random() * 8, 0); ctx.lineTo(-w / 2, 4);
+    ctx.moveTo(-w * 0.3, -h / 2);
+    ctx.lineTo(-w * 0.62, -h / 2 - 120);
+    ctx.lineTo(-w * 0.02, -h / 2 - 120);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(w * 0.3, -h / 2);
+    ctx.lineTo(w * 0.02, -h / 2 - 120);
+    ctx.lineTo(w * 0.62, -h / 2 - 120);
+    ctx.closePath(); ctx.fill();
+  }
+  // Shadow + body.
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(-w / 2 + 3, -h / 2 + 5, w, h);
+  ctx.fillStyle = car.wrecked ? '#3a3a3a' : car.color;
+  roundRect(ctx, -w / 2, -h / 2, w, h, 8);
+  ctx.fill();
+  // Hood + trunk shading.
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  ctx.fillRect(-w / 2 + 3, -h / 2 + 4, w - 6, h * 0.2);
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.fillRect(-w / 2 + 3, h / 2 - h * 0.2 - 4, w - 6, h * 0.2);
+  // Glasshouse.
+  ctx.fillStyle = '#141c26';
+  roundRect(ctx, -w / 2 + 5, -h * 0.18, w - 10, h * 0.4, 5);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(140,210,255,0.35)';
+  ctx.fillRect(-w / 2 + 6, -h * 0.18, w - 12, 5);
+  // Wheels.
+  ctx.fillStyle = '#0c0c0e';
+  const ww = 6;
+  const wh = 13;
+  ctx.fillRect(-w / 2 - 2, -h / 2 + 7, ww, wh);
+  ctx.fillRect(w / 2 - ww + 2, -h / 2 + 7, ww, wh);
+  ctx.fillRect(-w / 2 - 2, h / 2 - 7 - wh, ww, wh);
+  ctx.fillRect(w / 2 - ww + 2, h / 2 - 7 - wh, ww, wh);
+  // Lights.
+  ctx.fillStyle = '#fff3c4';
+  ctx.fillRect(-w / 2 + 4, -h / 2, 7, 4);
+  ctx.fillRect(w / 2 - 11, -h / 2, 7, 4);
+  ctx.fillStyle = '#ff3b30';
+  ctx.fillRect(-w / 2 + 4, h / 2 - 4, 7, 4);
+  ctx.fillRect(w / 2 - 11, h / 2 - 4, 7, 4);
+  if (car.type === 'police') {
+    ctx.fillStyle = '#101216';
+    ctx.fillRect(-w / 2, -h * 0.05, w, h * 0.34);
+    ctx.fillStyle = '#f2f2f2';
+    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('PSPD', 0, h * 0.18);
+    const phase = Math.sin(time * 14 + car.sirenPhase) > 0;
+    ctx.fillStyle = phase ? '#ff2d2d' : '#2d7bff';
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.shadowBlur = 14;
+    ctx.fillRect(-w / 2 + 5, -4, w - 10, 8);
+    ctx.shadowBlur = 0;
+  }
+  if (car.boosting) {
+    ctx.fillStyle = 'rgba(90,200,255,0.8)';
+    ctx.beginPath();
+    ctx.moveTo(-6, h / 2);
+    ctx.lineTo(0, h / 2 + 16 + Math.random() * 8);
+    ctx.lineTo(6, h / 2);
+    ctx.closePath(); ctx.fill();
+  }
+  if (car.health < car.maxHealth * 0.35 && !car.wrecked) {
+    ctx.fillStyle = 'rgba(200,200,200,0.5)';
+    ctx.beginPath();
+    ctx.arc(0, -h / 2 + 6, 6 + Math.random() * 3, 0, Math.PI * 2);
     ctx.fill();
   }
-  ctx.restore();
-  // headlight cones (world space, cheap)
-  ctx.save();
-  ctx.translate(car.x, car.y);
-  ctx.rotate(car.angle);
-  const grad = ctx.createLinearGradient(w / 2, 0, w / 2 + 90, 0);
-  grad.addColorStop(0, 'rgba(255,246,200,0.13)');
-  grad.addColorStop(1, 'rgba(255,246,200,0)');
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.moveTo(w / 2, -h / 2); ctx.lineTo(w / 2 + 90, -h); ctx.lineTo(w / 2 + 90, h); ctx.lineTo(w / 2, h / 2);
-  ctx.fill();
+  if (car.wrecked) {
+    ctx.fillStyle = 'rgba(20,20,20,0.55)';
+    roundRect(ctx, -w / 2, -h / 2, w, h, 8);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -148,10 +239,3 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
-
-export function carsCollide(a, b) {
-  const dx = a.x - b.x, dy = a.y - b.y;
-  return dx * dx + dy * dy < 42 * 42;
-}
-
-export { angleDelta };

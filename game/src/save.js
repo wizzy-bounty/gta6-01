@@ -1,50 +1,48 @@
-// NEON TIDE — localStorage save: cash, respect, story progress, garage
-// upgrades, district standing and where Nico was standing. Shot mode never
-// touches the save, so screenshots stay deterministic.
+// NEON TIDE — save.js: localStorage persistence.
+// Saves cash, respect, mission progress, garage upgrades, weapon ammo and
+// the player's position so a session survives a reload. Versioned key; a
+// corrupt or stale save is ignored rather than crashing the boot.
 
-import { SAVE_KEY, PLAYER_START } from './config.js';
+const SAVE_KEY = 'neontide-save-v1';
 
-export function defaultSave() {
-  return {
-    cash: 120,
-    respect: 20,
-    missionIndex: 0,
-    upgrades: { engine: 0, armor: 0, nitro: 0 },
-    standing: { cannery: 1, alto: 1, harbor: 2, velvet: 1 },
-    ammo: { pistol: 60, smg: 160 },
-    x: PLAYER_START.x,
-    y: PLAYER_START.y,
-  };
+export function saveGame(game) {
+  try {
+    const data = {
+      v: 1,
+      cash: game.cash,
+      respect: game.respect,
+      missionIndex: game.missions.index,
+      standing: game.standing,
+      upgrades: game.upgrades,
+      ammo: game.combat.ammo,
+      weapon: game.combat.weapon,
+      x: game.player.x,
+      y: game.player.y,
+      racesWon: game.racesWon,
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function loadSave() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return defaultSave();
+    if (!raw) return null;
     const data = JSON.parse(raw);
-    const base = defaultSave();
-    return {
-      ...base, ...data,
-      upgrades: { ...base.upgrades, ...(data.upgrades || {}) },
-      standing: { ...base.standing, ...(data.standing || {}) },
-      ammo: { ...base.ammo, ...(data.ammo || {}) },
-    };
+    if (data.v !== 1 || typeof data.cash !== 'number') return null;
+    return data;
   } catch {
-    return defaultSave();
+    return null;
   }
 }
 
-export function storeSave(state) {
+export function clearSave() {
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({
-      cash: state.cash,
-      respect: state.respect,
-      missionIndex: state.missionIndex,
-      upgrades: state.upgrades,
-      standing: state.standing,
-      ammo: state.ammo,
-      x: Math.round(state.player.x),
-      y: Math.round(state.player.y),
-    }));
-  } catch { /* private mode: the game simply runs unsaved */ }
+    localStorage.removeItem(SAVE_KEY);
+  } catch {
+    // Private mode etc. — nothing to clear.
+  }
 }

@@ -6,224 +6,249 @@
 <link rel="icon" href="data:,">
 <title>NEON TIDE — Porto Sirena</title>
 <style>
-  html, body { margin:0; padding:0; background:#060a12; overflow:hidden; height:100%;
-    font-family:"Segoe UI", "Helvetica Neue", Arial, sans-serif; color:#dff6ff;
-    -webkit-user-select:none; user-select:none; }
-  #stage { position:fixed; inset:0; }
-  canvas#game { position:absolute; inset:0; width:100%; height:100%; display:block; }
-  .glass { background:rgba(6,16,28,.72); border:1px solid rgba(64,224,255,.45);
-    border-radius:8px; box-shadow:0 0 14px rgba(0,180,255,.25), inset 0 0 18px rgba(0,60,90,.35);
-    backdrop-filter:blur(2px); }
-  .hud { position:absolute; z-index:5; pointer-events:none; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0d13; }
+  body { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: #eef2f7; }
+  #game { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .panel {
+    position: absolute; z-index: 5;
+    background: rgba(10, 14, 22, 0.62);
+    border: 1px solid rgba(120, 220, 255, 0.35);
+    border-radius: 10px;
+    padding: 8px 12px;
+    backdrop-filter: blur(3px);
+    box-shadow: 0 2px 14px rgba(0,0,0,0.45);
+    pointer-events: none;
+  }
   /* top-left: cash / respect / district */
-  #hud-topleft { top:12px; left:12px; padding:8px 12px 9px; min-width:228px; }
-  #hud-cash { font-size:26px; font-weight:800; color:#7dffb0; letter-spacing:.5px;
-    text-shadow:0 0 8px rgba(60,255,140,.6); line-height:1; }
-  #hud-cash.bump { animation: cashbump .45s ease-out; }
-  @keyframes cashbump { 0%{transform:scale(1.18); color:#eafff2;} 100%{transform:scale(1);} }
-  #hud-rank { margin-top:5px; font-size:13px; font-weight:700; color:#ffd76a; text-transform:uppercase; letter-spacing:1px; }
-  #hud-rankbar { margin-top:3px; height:7px; background:#12222f; border:1px solid rgba(255,215,106,.5); border-radius:4px; overflow:hidden; }
-  #hud-rankfill { height:100%; width:40%; background:linear-gradient(90deg,#ff9d3c,#ffd76a); }
-  #hud-district { margin-top:6px; font-size:15px; font-weight:700; color:#6ee7ff; letter-spacing:.4px; }
-  #hud-standing { font-size:11px; color:#9fd8e8; letter-spacing:2px; }
-  #hud-standing .pip { color:#23404f; } #hud-standing .pip.on { color:#ff5fd2; text-shadow:0 0 6px rgba(255,95,210,.8); }
+  #hud-topleft { top: 12px; left: 12px; min-width: 218px; }
+  #cash { font-size: 30px; font-weight: 800; color: #5dff8f; letter-spacing: 0.5px; line-height: 1; text-shadow: 0 0 12px rgba(93,255,143,0.45); }
+  .row-label { font-size: 10px; letter-spacing: 2px; color: #9fb4c8; margin-top: 6px; }
+  #respect-name { font-size: 15px; font-weight: 700; color: #ffd76a; }
+  .bar { height: 7px; background: rgba(255,255,255,0.14); border-radius: 4px; overflow: hidden; margin-top: 3px; }
+  .bar > div { height: 100%; width: 0%; transition: width 0.25s; }
+  #respect-fill { background: linear-gradient(90deg, #ffb347, #ffd76a); }
+  #district-name { font-size: 16px; font-weight: 700; color: #fff; }
+  #standing-pips { font-size: 12px; letter-spacing: 2px; }
   /* top-center: mission banner */
-  #hud-topcenter { top:12px; left:50%; transform:translateX(-50%); width:520px; padding:8px 16px 9px; text-align:center; }
-  #hud-mission { font-size:17px; font-weight:800; letter-spacing:1.5px; color:#ffe9fb;
-    text-transform:uppercase; text-shadow:0 0 10px rgba(255,95,210,.55); }
-  #hud-objective { margin-top:2px; font-size:14px; color:#c9f4ff; }
-  #hud-objective b { color:#ffd76a; }
-  /* top-right: wanted / clock / weather */
-  #hud-topright { top:12px; right:12px; padding:8px 12px 9px; text-align:right; min-width:196px; }
-  #hud-stars { font-size:27px; letter-spacing:3px; line-height:1; color:#2b3f4d; }
-  #hud-stars .on { color:#ffd23c; text-shadow:0 0 9px rgba(255,210,60,.85); }
-  #hud-stars.hot .on { animation: starflash .5s steps(2) infinite; }
-  @keyframes starflash { 50% { color:#ff4747; text-shadow:0 0 12px rgba(255,60,60,.9);} }
-  #hud-heatbar { margin-top:5px; height:8px; background:#12222f; border:1px solid rgba(255,90,90,.55); border-radius:4px; overflow:hidden; }
-  #hud-heatfill { height:100%; width:0%; background:linear-gradient(90deg,#ff9d3c,#ff4747); }
-  #hud-clockrow { margin-top:6px; font-size:15px; font-weight:700; color:#c9f4ff; }
-  #hud-weather { color:#6ee7ff; font-weight:800; letter-spacing:1px; }
+  #hud-topcenter { top: 12px; left: 50%; transform: translateX(-50%); width: 520px; text-align: center; }
+  #mission-title { font-size: 19px; font-weight: 800; letter-spacing: 3px; color: #37e0d4; text-shadow: 0 0 10px rgba(55,224,212,0.5); }
+  #objective-text { font-size: 14.5px; color: #f2f6fa; margin-top: 2px; }
+  /* top-right: wanted / heat / clock */
+  #hud-topright { top: 12px; right: 12px; min-width: 196px; text-align: right; }
+  #stars { font-size: 27px; color: #ffd76a; letter-spacing: 3px; line-height: 1; text-shadow: 0 0 10px rgba(255,215,106,0.6); }
+  #stars.hot { animation: starflash 0.5s infinite alternate; }
+  @keyframes starflash { from { color: #ffd76a; } to { color: #ff5147; } }
+  #heat-fill { background: linear-gradient(90deg, #ff9a3d, #ff5147); }
+  #clock { font-size: 19px; font-weight: 700; }
+  #weather { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 700; letter-spacing: 2px; color: #8ad8ff; border: 1px solid rgba(138,216,255,0.5); padding: 1px 6px; border-radius: 5px; vertical-align: 3px; }
   /* bottom-left: health + minimap */
-  #hud-bl { left:12px; bottom:12px; }
-  #hud-vitals { padding:7px 10px 8px; margin-bottom:8px; width:212px; }
-  .vrow { display:flex; align-items:center; gap:7px; margin-top:4px; }
-  .vrow:first-child { margin-top:0; }
-  .vlabel { font-size:11px; font-weight:800; letter-spacing:.5px; width:44px; color:#9fd8e8; }
-  .vbar { flex:1; height:10px; background:#12222f; border-radius:5px; overflow:hidden; border:1px solid rgba(120,220,255,.35); }
-  .vfill { height:100%; }
-  #hud-healthfill { width:100%; background:linear-gradient(90deg,#1fd67a,#7dffb0); }
-  #hud-armorfill { width:0%; background:linear-gradient(90deg,#3c8dff,#6ee7ff); }
-  #hud-minimapwrap { padding:6px; }
-  canvas#hud-minimap { display:block; width:212px; height:158px; border-radius:4px; background:#08131d; }
-  #hud-maplabel { margin-top:4px; font-size:12px; font-weight:700; letter-spacing:1px; color:#6ee7ff; text-align:center; text-transform:uppercase; }
+  #hud-vitals { position: absolute; left: 12px; bottom: 208px; z-index: 5; width: 200px; pointer-events: none; }
+  #health-fill { background: linear-gradient(90deg, #2ecc71, #5dff8f); }
+  #armor-fill { background: linear-gradient(90deg, #3d7bd9, #8ad8ff); }
+  .vital-label { font-size: 9.5px; letter-spacing: 2px; color: #cfe0ee; text-shadow: 0 1px 3px #000; margin-top: 5px; }
+  #bust-wrap { display: none; margin-top: 7px; }
+  #bust-wrap.show { display: block; }
+  #bust-wrap .vital-label { color: #ff8a7a; font-weight: 800; }
+  #bust-fill { background: #ff5147; }
+  #minimap-wrap { left: 12px; bottom: 12px; padding: 6px; }
+  #minimap { display: block; border-radius: 6px; }
+  #minimap-district { font-size: 11px; font-weight: 800; letter-spacing: 2.5px; text-align: center; margin-top: 4px; color: #fff; }
   /* bottom-right: context panel */
-  #hud-context { right:12px; bottom:12px; padding:9px 13px 10px; min-width:216px; text-align:right; }
-  #hud-speed { font-size:40px; font-weight:800; color:#eafcff; line-height:.95; text-shadow:0 0 12px rgba(110,231,255,.5); }
-  #hud-speed small { font-size:14px; color:#6ee7ff; font-weight:700; }
-  #hud-vehname { font-size:14px; font-weight:700; color:#ffd76a; letter-spacing:.5px; }
-  .grow { display:flex; align-items:center; gap:7px; margin-top:5px; }
-  .grow .glabel { font-size:11px; font-weight:800; letter-spacing:1px; width:52px; text-align:left; color:#9fd8e8; }
-  .gbar { flex:1; height:8px; background:#12222f; border-radius:4px; overflow:hidden; border:1px solid rgba(120,220,255,.3); }
-  .gfill { height:100%; }
-  #hud-nitrofill { background:linear-gradient(90deg,#3cc8ff,#b06eff); width:50%; }
-  #hud-vehfill { background:linear-gradient(90deg,#ffb03c,#7dffb0); width:100%; }
-  #hud-gear { font-size:13px; color:#c9f4ff; font-weight:700; }
-  #hud-weapon { font-size:19px; font-weight:800; color:#ffe9fb; letter-spacing:.5px; }
-  #hud-ammo { font-size:15px; color:#ffd76a; font-weight:700; }
-  #hud-hints { margin-top:3px; font-size:11.5px; color:#9fd8e8; line-height:1.5; }
-  /* bottom-center: prompt + dialogue */
-  #hud-prompt { left:50%; bottom:118px; transform:translateX(-50%); padding:7px 18px;
-    font-size:16px; font-weight:800; letter-spacing:1px; color:#fff; display:none;
-    border-color:rgba(255,215,106,.7); }
-  #hud-prompt b { color:#ffd76a; }
-  #hud-dialogue { left:50%; bottom:26px; transform:translateX(-50%); width:640px; padding:9px 16px 10px; display:none; }
-  #hud-speaker { font-size:13px; font-weight:800; letter-spacing:1.5px; color:#ff5fd2; text-transform:uppercase; }
-  #hud-line { font-size:16.5px; color:#f2fbff; margin-top:1px; }
-  /* race + toast + wheel */
-  #hud-race { top:118px; right:12px; padding:8px 13px; text-align:right; display:none; min-width:170px; }
-  #hud-racepos { font-size:24px; font-weight:800; color:#ffd76a; }
-  #hud-racemeta { font-size:13.5px; color:#c9f4ff; line-height:1.55; }
-  #hud-toast { top:170px; left:50%; transform:translateX(-50%); padding:8px 22px; text-align:center; display:none;
-    border-color:rgba(125,255,176,.65); }
-  #hud-toastmain { font-size:23px; font-weight:800; color:#7dffb0; }
-  #hud-toastsub { font-size:13px; font-weight:700; color:#ffd76a; letter-spacing:1px; }
-  #hud-wheel { left:50%; bottom:190px; transform:translateX(-50%); padding:8px 14px; display:none; gap:14px; }
-  #hud-wheel .slot { display:inline-block; margin:0 7px; text-align:center; font-size:12.5px; color:#9fd8e8; }
-  #hud-wheel .slot.sel { color:#fff; }
-  #hud-wheel .slot .wname { display:block; font-size:15px; font-weight:800; }
-  /* garage panel */
-  #hud-garage { left:50%; top:50%; transform:translate(-50%,-50%); width:430px; padding:16px 20px; display:none; pointer-events:auto; }
-  #hud-garage h2 { margin:0 0 4px; font-size:21px; letter-spacing:2px; color:#6ee7ff; }
-  #hud-garage .gmoney { font-size:15px; color:#7dffb0; font-weight:700; margin-bottom:10px; }
-  .gitem { display:flex; justify-content:space-between; align-items:center; padding:7px 9px; margin-top:6px;
-    background:rgba(18,40,58,.8); border:1px solid rgba(110,231,255,.3); border-radius:6px; font-size:14px; }
-  .gitem button { pointer-events:auto; background:#0e5d78; color:#eafcff; border:1px solid #6ee7ff; border-radius:5px;
-    padding:4px 12px; font-weight:800; cursor:pointer; }
-  .gitem button:disabled { opacity:.4; cursor:default; }
-  #hud-garage .gclose { margin-top:12px; font-size:12.5px; color:#9fd8e8; text-align:center; }
-  /* full-screen layers */
-  .screen { position:absolute; inset:0; z-index:9; display:flex; flex-direction:column; align-items:center;
-    justify-content:center; background:radial-gradient(ellipse at 50% 65%, rgba(10,40,60,.55), rgba(3,6,12,.92) 75%); text-align:center; }
-  #hud-title { font-size:74px; font-weight:900; letter-spacing:6px; color:#eafcff; line-height:1;
-    text-shadow:0 0 26px rgba(255,95,210,.75), 0 0 60px rgba(64,224,255,.5); }
-  #hud-title span { color:#ff5fd2; }
-  #hud-tagline { margin-top:10px; font-size:17px; color:#c9f4ff; letter-spacing:2px; }
-  .bigbtn { pointer-events:auto; margin-top:26px; padding:12px 44px; font-size:19px; font-weight:800; letter-spacing:2px;
-    color:#06121c; background:linear-gradient(90deg,#6ee7ff,#ff5fd2); border:none; border-radius:8px; cursor:pointer;
-    box-shadow:0 0 22px rgba(255,95,210,.5); }
-  #hud-controls { margin-top:24px; font-size:13.5px; color:#9fd8e8; line-height:1.8; }
-  #hud-pause { display:none; }
-  #hud-pause h2, #hud-splashtext { font-size:44px; letter-spacing:4px; color:#eafcff; text-shadow:0 0 20px rgba(64,224,255,.6); }
-  #hud-splash { display:none; background:radial-gradient(ellipse at center, rgba(60,0,0,.45), rgba(10,0,0,.9) 78%); }
-  #hud-splashtext { color:#ff5555; text-shadow:0 0 24px rgba(255,40,40,.8); }
-  #hud-splashsub { font-size:16px; color:#ffd7d7; margin-top:8px; }
-  #vignette { position:absolute; inset:0; z-index:4; pointer-events:none; opacity:0;
-    background:radial-gradient(ellipse at center, transparent 52%, rgba(200,0,0,.55) 100%); }
-  #dmgdir { position:absolute; left:50%; top:50%; width:120px; height:120px; margin:-60px 0 0 -60px; z-index:4;
-    pointer-events:none; opacity:0; }
-  #dmgdir div { position:absolute; left:50%; top:-6px; width:44px; height:16px; margin-left:-22px;
-    background:radial-gradient(ellipse at 50% 100%, rgba(255,50,50,.95), rgba(255,50,50,0) 75%); border-radius:50%; }
+  #hud-context { right: 12px; bottom: 12px; min-width: 218px; }
+  #ctx-drive, #ctx-foot { display: none; }
+  #ctx-drive.show, #ctx-foot.show { display: block; }
+  #speed { font-size: 44px; font-weight: 800; line-height: 1; color: #fff; }
+  .speed-unit { font-size: 13px; color: #9fb4c8; font-weight: 700; }
+  #gear { float: right; font-size: 22px; font-weight: 800; color: #37e0d4; border: 1px solid rgba(55,224,212,0.5); border-radius: 6px; padding: 0 8px; }
+  #nitro-fill { background: linear-gradient(90deg, #37b6ff, #7fe7ff); }
+  #veh-fill { background: linear-gradient(90deg, #ffb347, #ffd76a); }
+  #veh-name { font-size: 13.5px; font-weight: 700; color: #ffd76a; margin-top: 5px; }
+  #weapon-name { font-size: 21px; font-weight: 800; color: #ffd76a; }
+  #ammo { font-size: 16px; font-weight: 700; color: #fff; margin-left: 8px; }
+  .hint-line { font-size: 11.5px; color: #9fb4c8; margin-top: 3px; }
+  /* bottom-center: prompt + subtitle */
+  #prompt {
+    position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%); z-index: 6;
+    font-size: 17px; font-weight: 800; letter-spacing: 1px; color: #0b0f14;
+    background: #ffd76a; padding: 7px 18px; border-radius: 8px; display: none;
+    box-shadow: 0 0 18px rgba(255,215,106,0.55); pointer-events: none;
+  }
+  #prompt.show { display: block; }
+  #subtitle {
+    position: absolute; left: 50%; bottom: 62px; transform: translateX(-50%); z-index: 6;
+    width: 640px; max-width: 80vw; text-align: center; display: none; pointer-events: none;
+    background: rgba(5, 8, 12, 0.72); border-radius: 8px; padding: 8px 16px;
+  }
+  #subtitle.show { display: block; }
+  #sub-who { font-size: 11px; font-weight: 800; letter-spacing: 2.5px; color: #ff4fd8; }
+  #sub-text { font-size: 16.5px; color: #fff; margin-top: 1px; }
+  /* race HUD */
+  #race-hud { top: 96px; left: 50%; transform: translateX(-50%); text-align: center; display: none; min-width: 300px; }
+  #race-hud.show { display: block; }
+  #race-pos { font-size: 24px; font-weight: 800; color: #ffd76a; }
+  #race-check, #race-time { font-size: 13.5px; font-weight: 700; color: #dfe9f2; letter-spacing: 1px; }
+  /* toast + splash */
+  #toast {
+    position: absolute; top: 170px; left: 50%; transform: translateX(-50%) scale(0.9); z-index: 7;
+    font-size: 21px; font-weight: 800; color: #5dff8f; text-align: center; opacity: 0;
+    transition: all 0.25s; pointer-events: none; text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) scale(1); }
+  #splash {
+    position: absolute; top: 38%; left: 50%; transform: translate(-50%,-50%); z-index: 8;
+    font-size: 74px; font-weight: 900; letter-spacing: 10px; opacity: 0; pointer-events: none;
+    text-shadow: 0 0 34px rgba(0,0,0,0.9); transition: opacity 0.3s;
+  }
+  #splash.show { opacity: 1; }
+  /* vignette + damage arc */
+  #vignette { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 52%, rgba(200,10,10,0.55) 100%); }
+  #dmg-arc { position: absolute; left: 50%; top: 50%; width: 150px; height: 150px; z-index: 4;
+    border: 7px solid transparent; border-top-color: rgba(255,60,40,0.9); border-radius: 50%;
+    opacity: 0; pointer-events: none; }
+  #dmg-arc.show { opacity: 1; }
+  /* weapon wheel */
+  #wheel { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); z-index: 9;
+    display: none; gap: 14px; pointer-events: none; }
+  #wheel.show { display: flex; }
+  .wheel-slot { background: rgba(10,14,22,0.85); border: 2px solid rgba(255,255,255,0.25);
+    border-radius: 12px; padding: 14px 20px; text-align: center; font-weight: 800; font-size: 16px; }
+  .wheel-slot.sel { border-color: #ffd76a; color: #ffd76a; box-shadow: 0 0 18px rgba(255,215,106,0.4); }
+  .wheel-slot small { display: block; font-size: 11px; color: #9fb4c8; margin-top: 3px; }
+  /* garage */
+  #garage-panel { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); z-index: 10;
+    width: 520px; background: rgba(8, 11, 18, 0.94); border: 1px solid #ffb347; border-radius: 14px;
+    padding: 20px 24px; display: none; }
+  #garage-panel.show { display: block; }
+  #garage-panel h2 { color: #ffb347; letter-spacing: 3px; font-size: 21px; }
+  #garage-panel .sub { color: #9fb4c8; font-size: 13px; margin: 4px 0 12px; }
+  .garage-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+    padding: 9px 0; border-top: 1px solid rgba(255,255,255,0.12); }
+  .g-name { font-weight: 800; font-size: 15.5px; }
+  .g-name em { color: #ffd76a; font-style: normal; letter-spacing: 2px; margin-left: 6px; }
+  .g-blurb { color: #9fb4c8; font-size: 12px; flex: 1; }
+  .g-price { font-weight: 800; color: #5dff8f; }
+  /* start + pause screens */
+  .screen { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: radial-gradient(ellipse at 50% 35%, rgba(23,42,66,0.88), rgba(4,6,10,0.96)); }
+  .screen.hidden { display: none; }
+  .game-title { font-size: 84px; font-weight: 900; letter-spacing: 8px; line-height: 1;
+    background: linear-gradient(90deg, #37e0d4, #ff4fd8); -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 22px rgba(255,79,216,0.35)); }
+  .game-sub { font-size: 17px; color: #cfe0ee; margin-top: 10px; letter-spacing: 1px; }
+  .story { max-width: 620px; color: #9fb4c8; font-size: 14.5px; margin-top: 16px; line-height: 1.55; }
+  .controls { margin-top: 18px; color: #dfe9f2; font-size: 13.5px; line-height: 1.9; }
+  .controls b { color: #ffd76a; }
+  .btn { margin-top: 22px; pointer-events: auto; cursor: pointer; border: none; border-radius: 10px;
+    background: linear-gradient(90deg, #37e0d4, #2ea8ff); color: #06121a; font-size: 19px; font-weight: 900;
+    letter-spacing: 2px; padding: 13px 42px; box-shadow: 0 0 22px rgba(55,224,212,0.45); }
+  .btn.alt { background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.4); box-shadow: none; }
+  #pause-menu h2 { font-size: 44px; letter-spacing: 6px; }
 </style>
 </head>
 <body>
-<div id="stage">
-  <canvas id="game" width="1280" height="720"></canvas>
-  <div id="vignette"></div>
-  <div id="dmgdir"><div></div></div>
+<canvas id="game"></canvas>
+<div id="vignette"></div>
+<div id="dmg-arc"></div>
 
-  <div class="hud glass" id="hud-topleft">
-    <div id="hud-cash">$0</div>
-    <div id="hud-rank">STREET RUNNER</div>
-    <div id="hud-rankbar"><div id="hud-rankfill"></div></div>
-    <div id="hud-district">Harborfront</div>
-    <div id="hud-standing">STANDING <span id="hud-pips"></span></div>
-  </div>
+<div id="hud-topleft" class="panel">
+  <div id="cash">$0</div>
+  <div class="row-label">RESPECT — <span id="respect-name">ROOK</span></div>
+  <div class="bar"><div id="respect-fill"></div></div>
+  <div class="row-label">DISTRICT</div>
+  <div><span id="district-name">Harborfront</span> <span id="standing-pips">○○○○○</span></div>
+</div>
 
-  <div class="hud glass" id="hud-topcenter">
-    <div id="hud-mission">FREE ROAM — PORTO SIRENA</div>
-    <div id="hud-objective">Find Sable Ivers at the Harborfront pier</div>
-  </div>
+<div id="hud-topcenter" class="panel">
+  <div id="mission-title">FREE ROAM</div>
+  <div id="objective-text">Steal a car with E</div>
+</div>
 
-  <div class="hud glass" id="hud-topright">
-    <div id="hud-stars"></div>
-    <div id="hud-heatbar"><div id="hud-heatfill"></div></div>
-    <div id="hud-clockrow"><span id="hud-clock">19:42</span> · <span id="hud-weather">RAIN</span> · <span id="hud-temp">24°C</span></div>
-  </div>
+<div id="hud-topright" class="panel">
+  <div id="stars">☆☆☆☆☆</div>
+  <div class="bar"><div id="heat-fill"></div></div>
+  <div style="margin-top:5px"><span id="clock">19:42</span><span id="weather">RAIN</span></div>
+</div>
 
-  <div class="hud" id="hud-bl">
-    <div class="glass" id="hud-vitals">
-      <div class="vrow"><div class="vlabel">HP</div><div class="vbar"><div class="vfill" id="hud-healthfill"></div></div></div>
-      <div class="vrow"><div class="vlabel">ARMOR</div><div class="vbar"><div class="vfill" id="hud-armorfill"></div></div></div>
-    </div>
-    <div class="glass" id="hud-minimapwrap">
-      <canvas id="hud-minimap" width="212" height="158"></canvas>
-      <div id="hud-maplabel">Harborfront</div>
-    </div>
-  </div>
-
-  <div class="hud glass" id="hud-context">
-    <div id="hud-drive">
-      <div id="hud-speed">0 <small>km/h</small></div>
-      <div id="hud-vehname">ON FOOT</div>
-      <div class="grow"><div class="glabel">NITRO</div><div class="gbar"><div class="gfill" id="hud-nitrofill"></div></div></div>
-      <div class="grow"><div class="glabel">BODY</div><div class="gbar"><div class="gfill" id="hud-vehfill"></div></div></div>
-      <div id="hud-gear">GEAR — · E EXIT</div>
-    </div>
-    <div id="hud-foot" style="display:none">
-      <div id="hud-weapon">FISTS</div>
-      <div id="hud-ammo">—</div>
-      <div id="hud-hints">TAB weapon wheel · F melee<br>Mouse aim · Click shoot</div>
-    </div>
-  </div>
-
-  <div class="hud glass" id="hud-prompt"></div>
-
-  <div class="hud glass" id="hud-dialogue">
-    <div id="hud-speaker">SABLE IVERS</div>
-    <div id="hud-line"></div>
-  </div>
-
-  <div class="hud glass" id="hud-race">
-    <div id="hud-racepos">POS 2/4</div>
-    <div id="hud-racemeta"></div>
-  </div>
-
-  <div class="hud glass" id="hud-toast">
-    <div id="hud-toastmain">+$0</div>
-    <div id="hud-toastsub">RESPECT +0</div>
-  </div>
-
-  <div class="hud glass" id="hud-wheel"></div>
-
-  <div class="hud glass" id="hud-garage">
-    <h2>TIDEWORKS GARAGE</h2>
-    <div class="gmoney" id="hud-garagemoney">$0</div>
-    <div id="hud-garageitems"></div>
-    <div class="gclose">Click BUY to upgrade · E or ESC to close</div>
-  </div>
-
-  <div class="screen" id="hud-start">
-    <div id="hud-title">NEON <span>TIDE</span></div>
-    <div id="hud-tagline">PORTO SIRENA · ONE LAST CHAIN OF JOBS · THE SIRENA QUEEN AWAITS</div>
-    <button class="bigbtn" id="hud-startbtn">START ENGINE</button>
-    <div id="hud-controls">
-      WASD / Arrows — move &amp; drive · E — enter / steal / interact · SPACE — handbrake<br>
-      SHIFT — nitro · TAB — weapon wheel · F — melee · Mouse — aim · Click — shoot<br>
-      P / ESC — pause · Missions pay more the hotter you are
-    </div>
-  </div>
-
-  <div class="screen" id="hud-pause">
-    <h2>PAUSED</h2>
-    <div id="hud-pausemeta" style="font-size:15px;color:#c9f4ff;line-height:1.8"></div>
-    <button class="bigbtn" id="hud-resumebtn">RESUME</button>
-  </div>
-
-  <div class="screen" id="hud-splash">
-    <div id="hud-splashtext">WASTED</div>
-    <div id="hud-splashsub"></div>
+<div id="hud-vitals">
+  <div class="vital-label">HEALTH</div>
+  <div class="bar"><div id="health-fill"></div></div>
+  <div class="vital-label">ARMOR</div>
+  <div class="bar"><div id="armor-fill"></div></div>
+  <div id="bust-wrap">
+    <div class="vital-label">BUSTED</div>
+    <div class="bar"><div id="bust-fill"></div></div>
   </div>
 </div>
+
+<div id="minimap-wrap" class="panel">
+  <canvas id="minimap" width="200" height="150"></canvas>
+  <div id="minimap-district">HARBORFRONT</div>
+</div>
+
+<div id="hud-context" class="panel">
+  <div id="ctx-drive">
+    <span id="speed">0</span> <span class="speed-unit">KM/H</span><span id="gear">N</span>
+    <div class="row-label">NITRO</div>
+    <div class="bar"><div id="nitro-fill"></div></div>
+    <div class="row-label">VEHICLE</div>
+    <div class="bar"><div id="veh-fill"></div></div>
+    <div id="veh-name">—</div>
+  </div>
+  <div id="ctx-foot" class="show">
+    <span id="weapon-name">PISTOL</span><span id="ammo">48 rnd</span>
+    <div class="hint-line">MOUSE aim · CLICK shoot · F melee</div>
+    <div class="hint-line">Q / 1-2-3 weapon wheel · E enter car</div>
+  </div>
+</div>
+
+<div id="race-hud" class="panel">
+  <div id="race-pos">POS 1/4</div>
+  <div id="race-check">CHECKPOINT 1/9</div>
+  <div id="race-time">0:00.0</div>
+</div>
+
+<div id="prompt"></div>
+<div id="subtitle"><div id="sub-who"></div><div id="sub-text"></div></div>
+<div id="toast"></div>
+<div id="splash"></div>
+
+<div id="wheel">
+  <div class="wheel-slot" data-weapon="fists">FISTS<small>1 · melee</small></div>
+  <div class="wheel-slot" data-weapon="pistol">PISTOL<small>2 · sidearm</small></div>
+  <div class="wheel-slot" data-weapon="smg">MICRO SMG<small>3 · auto</small></div>
+</div>
+
+<div id="garage-panel">
+  <h2>SIRENA CUSTOMS — GARAGE</h2>
+  <div class="sub">Cash: <span id="garage-cash">$0</span> · Press 1-3 to buy · E or ESC to leave. Upgrades apply to every car you drive.</div>
+  <div id="garage-rows"></div>
+</div>
+
+<div id="start-screen" class="screen">
+  <div class="game-title">NEON TIDE</div>
+  <div class="game-sub">PORTO SIRENA · ONE LAST SEASON FOR THE TIDE</div>
+  <div class="story">You are Nico "Tide" Ferreira, the wheelman who swore he was done. Fixer Sable Ivers
+    has six jobs — the Neon Tide — ending with the vault of the casino ferry Sirena Queen.
+    Steal cars, run the chain, outrun the PSPD. The hotter you are, the bigger the payout.</div>
+  <div class="controls">
+    <b>WASD</b> move / drive · <b>E</b> steal &amp; enter cars, garage · <b>SHIFT</b> run / nitro ·
+    <b>SPACE</b> handbrake<br>
+    <b>MOUSE</b> aim · <b>CLICK</b> shoot · <b>F</b> melee · <b>Q / 1-3</b> weapons · <b>P / ESC</b> pause
+  </div>
+  <button class="btn" id="btn-start">START — NEW GAME</button>
+  <button class="btn alt" id="btn-continue" style="display:none">CONTINUE SAVED GAME</button>
+</div>
+
+<div id="pause-menu" class="screen hidden">
+  <h2>PAUSED</h2>
+  <div class="story">Progress saves automatically at every payout. The tide waits for no one, Nico.</div>
+  <button class="btn" id="btn-resume">RESUME</button>
+  <button class="btn alt" id="btn-restart">RESTART STORY</button>
+</div>
+
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
