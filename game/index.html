@@ -4,201 +4,157 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
-<title>SOLMAR HEAT — Solmar City</title>
+<title>NEON TIDE — Porto Sirena</title>
 <style>
-  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#0b1020;
-    font-family:"Segoe UI",system-ui,Arial,sans-serif;color:#fff;
-    -webkit-user-select:none;user-select:none}
-  #app{position:fixed;inset:0}
-  canvas.webgl{display:block;width:100%;height:100%}
-  .hidden{display:none!important}
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#0b0e1a;
+    font-family:"Segoe UI", system-ui, sans-serif; color:#eaf6ff; }
+  #app { position:fixed; inset:0; }
+  canvas.webgl { display:block; }
+  .overlay { position:fixed; inset:0; pointer-events:none; z-index:5; }
   /* ---------- HUD ---------- */
-  #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
-  #topbar{position:absolute;top:14px;right:16px;text-align:right;
-    text-shadow:0 2px 6px rgba(0,0,0,.8)}
-  #stars{font-size:26px;letter-spacing:3px;color:#ffd23f;line-height:1}
-  #stars .off{color:rgba(255,255,255,.28)}
-  #money{font-size:22px;font-weight:800;color:#7dff9b;margin-top:4px}
-  #healthbar{width:170px;height:12px;border:2px solid rgba(255,255,255,.7);
-    border-radius:6px;margin-top:6px;margin-left:auto;background:rgba(0,0,0,.45)}
-  #healthfill{height:100%;width:100%;background:linear-gradient(90deg,#ff5a4e,#ff9a3d);
-    border-radius:4px;transition:width .2s}
-  #clock{font-size:13px;color:#cfe3ff;margin-top:5px;letter-spacing:1px}
-  #objective{position:absolute;top:14px;left:16px;max-width:380px;
-    background:rgba(5,10,25,.62);border-left:4px solid #ffb300;border-radius:6px;
-    padding:10px 12px;text-shadow:0 1px 3px #000}
-  #objective .mtitle{font-weight:800;font-size:15px;color:#ffd23f;letter-spacing:.5px}
-  #objective .mobj{font-size:14px;margin-top:3px;line-height:1.35}
-  #objective .msub{font-size:12px;color:#9fd8ff;margin-top:3px}
-  #minimapWrap{position:absolute;right:16px;bottom:16px;width:230px;height:230px;
-    border:3px solid rgba(255,255,255,.55);border-radius:50%;overflow:hidden;
-    background:#0a1a2e;box-shadow:0 4px 18px rgba(0,0,0,.6)}
-  #minimap{width:100%;height:100%;display:block}
-  #speedo{position:absolute;right:262px;bottom:22px;text-align:right;
-    text-shadow:0 2px 6px #000}
-  #speedo .spd{font-size:34px;font-weight:800;line-height:1}
-  #speedo .lbl{font-size:12px;color:#cfe3ff;letter-spacing:1px}
-  #radio{position:absolute;left:16px;bottom:16px;font-size:14px;font-weight:700;
-    background:rgba(5,10,25,.62);padding:8px 12px;border-radius:6px;
-    border:1px solid rgba(255,255,255,.25);text-shadow:0 1px 3px #000}
-  #radio .st{color:#ff7ad9}
-  /* ---------- v8 panels ---------- */
-  #weaponPanel{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
-    display:flex;gap:8px}
-  #weaponPanel .wslot{background:rgba(5,10,25,.66);border:2px solid rgba(255,255,255,.35);
-    border-radius:8px;padding:7px 12px;font-size:13px;font-weight:800;letter-spacing:.5px;
-    color:#dfe9ff;text-shadow:0 1px 3px #000}
-  #weaponPanel .wslot .wkey{background:#ffd23f;color:#111;border-radius:4px;
-    padding:0 6px;margin-right:7px}
-  #weaponPanel .wslot.active{border-color:#ffd23f;color:#ffd23f;
-    box-shadow:0 0 12px rgba(255,210,63,.45)}
-  #weaponPanel .wslot.locked{opacity:.45}
-  #respectPanel{position:absolute;left:16px;bottom:64px;font-size:13px;line-height:1.5;
-    background:rgba(5,10,25,.62);padding:8px 12px;border-radius:6px;
-    border:1px solid rgba(255,255,255,.25);text-shadow:0 1px 3px #000;min-width:230px}
-  #respectPanel .rlabel{color:#9fd8ff;font-size:11px;letter-spacing:1px}
-  #respectPanel .rbar{display:block;height:7px;background:rgba(255,255,255,.18);
-    border-radius:4px;margin-top:3px;overflow:hidden}
-  #respectPanel .rbar span{display:block;height:100%;background:#ff7ad9}
-  #raceInfo{position:absolute;left:50%;top:16px;transform:translateX(-50%);
-    background:rgba(5,25,10,.72);border:2px solid #2aff5a;border-radius:8px;
-    padding:8px 18px;font-size:16px;letter-spacing:.5px;text-shadow:0 1px 3px #000}
-  #wheel{position:absolute;left:50%;top:50%;width:300px;height:300px;
-    transform:translate(-50%,-50%);pointer-events:none}
-  #wheel .wseg{position:absolute;width:128px;text-align:center;font-weight:900;
-    font-size:16px;letter-spacing:1px;background:rgba(5,10,25,.8);
-    border:2px solid rgba(255,255,255,.5);border-radius:10px;padding:12px 4px;
-    text-shadow:0 1px 3px #000}
-  #wheel .wseg span{display:block;font-size:12px;color:#ffd23f}
-  #wheel .wseg.s0{left:86px;top:0}
-  #wheel .wseg.s1{left:0;bottom:26px}
-  #wheel .wseg.s2{right:0;bottom:26px}
-  #wheel .wseg.active{border-color:#ffd23f;color:#ffd23f}
-  #wheel .wseg.locked{opacity:.45}
-  #garagePanel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    width:min(430px,90vw);background:rgba(4,14,22,.94);border:2px solid #2ad4ff;
-    border-radius:12px;padding:18px 20px;pointer-events:auto;z-index:8;
-    box-shadow:0 10px 40px rgba(0,0,0,.8)}
-  #garagePanel h3{margin:0 0 2px;color:#2ad4ff;letter-spacing:1px;font-size:19px}
-  #garagePanel .gcash{color:#7dff9b;font-weight:800;margin-bottom:10px}
-  #garagePanel .grow{border-top:1px solid rgba(255,255,255,.16);padding:9px 0}
-  #garagePanel .gname{font-weight:800;font-size:15px;letter-spacing:.5px}
-  #garagePanel .gpips{color:#2ad4ff;letter-spacing:2px;font-size:12px}
-  #garagePanel .gblurb{font-size:12.5px;color:#bcd0ff;margin:2px 0 6px}
-  #garagePanel .gbuy{cursor:pointer;background:#2ad4ff;color:#04222e;border:none;
-    border-radius:6px;font-weight:800;padding:7px 14px;font-size:13.5px}
-  #garagePanel .gbuy:hover{filter:brightness(1.15)}
-  #garagePanel .gmax{color:#7dff9b;font-weight:800;font-size:13px}
-  #garagePanel .gfoot{margin-top:10px;font-size:12px;color:#8fa3c8}
-  #prompt{position:absolute;left:50%;bottom:23%;transform:translateX(-50%);
-    font-size:19px;font-weight:800;background:rgba(5,10,25,.72);padding:10px 18px;
-    border-radius:8px;border:2px solid #ffd23f;text-shadow:0 1px 3px #000}
-  #prompt .key{background:#ffd23f;color:#111;border-radius:4px;padding:1px 8px;margin-right:8px}
-  #dialog{position:absolute;left:50%;bottom:110px;transform:translateX(-50%);
-    width:min(620px,86vw);background:rgba(5,10,25,.78);border-radius:8px;
-    padding:12px 16px;border:1px solid rgba(255,255,255,.3);font-size:15px;line-height:1.45}
-  #dialog .who{color:#ff7ad9;font-weight:800}
-  #banner{position:absolute;left:50%;top:32%;transform:translate(-50%,-50%);
-    font-size:44px;font-weight:900;letter-spacing:2px;color:#ffd23f;
-    text-shadow:0 3px 0 #b35400,0 6px 22px rgba(0,0,0,.8);text-align:center}
-  #banner small{display:block;font-size:18px;color:#fff;letter-spacing:1px;margin-top:6px}
-  #wantedFlash{position:absolute;inset:0;border:4px solid rgba(255,40,40,.0);
-    pointer-events:none;transition:border-color .3s}
-  #crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    font-size:22px;color:rgba(255,255,255,.9);text-shadow:0 0 4px #000}
-  #toast{position:absolute;left:50%;top:64px;transform:translateX(-50%);
-    background:rgba(5,10,25,.75);padding:8px 16px;border-radius:6px;font-size:14px;
-    border:1px solid rgba(255,255,255,.3)}
-  /* ---------- Screens ---------- */
-  .screen{position:fixed;inset:0;z-index:10;display:flex;align-items:center;
-    justify-content:center;flex-direction:column;text-align:center;
-    background:linear-gradient(160deg,rgba(8,12,34,.88),rgba(64,8,64,.82));}
-  .screen h1{font-size:64px;margin:0;letter-spacing:4px;color:#ffd23f;
-    text-shadow:0 4px 0 #b35400,0 8px 30px rgba(0,0,0,.9)}
-  .screen h1 span{color:#ff7ad9}
-  .screen h2{font-weight:400;font-size:19px;color:#dfe9ff;margin:10px 0 26px;max-width:640px;line-height:1.5}
-  .screen .btn{pointer-events:auto;cursor:pointer;font-size:19px;font-weight:800;
-    background:#ffb300;color:#1a1000;border:none;border-radius:8px;
-    padding:14px 34px;margin:6px;letter-spacing:1px;box-shadow:0 4px 0 #b35400}
-  .screen .btn:hover{filter:brightness(1.12)}
-  .screen .btn.ghost{background:rgba(255,255,255,.14);color:#fff;box-shadow:none;
-    border:2px solid rgba(255,255,255,.5)}
-  .screen .keys{margin-top:26px;font-size:14px;color:#bcd0ff;line-height:1.9}
-  .screen .keys b{color:#ffd23f}
-  .screen .foot{margin-top:22px;font-size:12px;color:#8fa3c8}
-  #pauseMenu{background:rgba(5,8,20,.82)}
-  #completeScreen h1{color:#7dff9b}
-  #loading{position:fixed;inset:0;z-index:20;display:flex;align-items:center;
-    justify-content:center;background:#0b1020;font-size:18px;color:#cfe3ff}
+  #hud { display:none; }
+  #topbar { position:absolute; top:14px; left:16px; right:16px; display:flex;
+    justify-content:space-between; align-items:flex-start; }
+  #stars { font-size:30px; letter-spacing:4px; color:#2b3350; text-shadow:0 2px 6px #000; line-height:1; }
+  #stars .lit { color:#ffd94a; text-shadow:0 0 12px #ffb300, 0 2px 4px #000; }
+  #wantedlabel { font-size:11px; letter-spacing:3px; color:#9fb6d8; margin-top:3px; }
+  #wallet { text-align:right; }
+  #cash { font-size:26px; font-weight:700; color:#5df2a6; text-shadow:0 2px 6px #000; }
+  #respect { font-size:12px; letter-spacing:2px; color:#f2a6e0; margin-top:2px; }
+  #standing { font-size:11px; color:#9fb6d8; margin-top:2px; letter-spacing:1px; }
+  #healthwrap { position:absolute; left:16px; bottom:18px; width:230px; }
+  #healthlabel { font-size:11px; letter-spacing:3px; color:#9fb6d8; margin-bottom:4px; }
+  #healthbar { height:13px; background:#141a2e; border:1px solid #3b4a75; border-radius:3px; overflow:hidden; }
+  #healthfill { height:100%; width:100%; background:linear-gradient(90deg,#e33f5e,#ff8a5c); transition:width .15s; }
+  #weaponlabel { margin-top:6px; font-size:12px; letter-spacing:2px; color:#ffd94a; }
+  #minimap { position:absolute; right:16px; bottom:18px; border:2px solid #3b4a75; border-radius:6px;
+    background:#0d1226; box-shadow:0 4px 18px rgba(0,0,0,.55); }
+  #objective { position:absolute; top:86px; left:50%; transform:translateX(-50%); max-width:640px;
+    text-align:center; font-size:16px; letter-spacing:1px; color:#ffe9a8;
+    text-shadow:0 2px 6px #000; background:rgba(8,10,24,.45); padding:6px 18px; border-radius:20px; }
+  #objective b { color:#5df2a6; }
+  #prompt { position:absolute; left:50%; bottom:150px; transform:translateX(-50%); font-size:19px;
+    letter-spacing:1px; color:#fff; background:rgba(8,10,24,.72); border:1px solid #5df2a6;
+    padding:8px 20px; border-radius:6px; display:none; }
+  #prompt b { color:#5df2a6; }
+  #dlg { position:absolute; left:50%; bottom:64px; transform:translateX(-50%); width:620px; max-width:86vw;
+    background:rgba(8,10,24,.82); border-left:4px solid #f06bd8; border-radius:4px; padding:10px 16px; display:none; }
+  #dlgname { font-size:12px; letter-spacing:3px; color:#f06bd8; margin-bottom:3px; }
+  #dlgtext { font-size:16px; line-height:1.35; }
+  #toast { position:absolute; top:140px; left:50%; transform:translateX(-50%); font-size:21px; font-weight:700;
+    letter-spacing:2px; color:#5df2a6; text-shadow:0 2px 8px #000; opacity:0; transition:opacity .3s; }
+  #racehud { position:absolute; top:86px; right:16px; text-align:right; font-size:15px; color:#a8e6ff;
+    text-shadow:0 2px 5px #000; display:none; }
+  #crosshair { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:20px;
+    color:rgba(255,255,255,.85); text-shadow:0 0 4px #000; display:none; }
+  #dmgflash { position:absolute; inset:0; background:radial-gradient(ellipse at center, transparent 55%, rgba(227,40,70,.5));
+    opacity:0; transition:opacity .1s; }
+  /* ---------- weapon wheel ---------- */
+  #wheel { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:300px; height:300px; display:none; }
+  .wslot { position:absolute; width:104px; height:64px; background:rgba(10,14,30,.88); border:2px solid #3b4a75;
+    border-radius:10px; text-align:center; padding-top:10px; font-size:13px; letter-spacing:1px; color:#cfe2ff; }
+  .wslot.sel { border-color:#ffd94a; color:#ffd94a; box-shadow:0 0 18px rgba(255,217,74,.4); }
+  .wslot small { display:block; font-size:10px; color:#9fb6d8; margin-top:3px; }
+  #w-fists { left:98px; top:0; } #w-pistol { left:0; bottom:10px; } #w-smg { right:0; bottom:10px; }
+  /* ---------- menus ---------- */
+  .screen { position:fixed; inset:0; z-index:10; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; background:radial-gradient(ellipse at 50% 65%, rgba(240,107,216,.14), rgba(5,7,16,.88) 70%); }
+  .screen h1 { font-size:84px; margin:0; letter-spacing:10px; font-weight:900;
+    background:linear-gradient(180deg,#7df9ff,#f06bd8 60%,#ff8a5c); -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow:0 0 42px rgba(240,107,216,.25); }
+  .screen h2 { margin:4px 0 18px; font-weight:400; letter-spacing:6px; font-size:16px; color:#a8e6ff; }
+  .screen p { color:#cfe2ff; font-size:15px; line-height:1.55; text-align:center; max-width:560px; }
+  .btn { pointer-events:auto; cursor:pointer; margin-top:14px; padding:12px 42px; font-size:17px; letter-spacing:3px;
+    color:#081018; background:linear-gradient(90deg,#5df2a6,#7df9ff); border:none; border-radius:6px; font-weight:700; }
+  .btn:hover { filter:brightness(1.12); }
+  .btn.ghost { background:transparent; color:#a8e6ff; border:1px solid #3b4a75; }
+  .controls { margin-top:22px; font-size:13px; color:#9fb6d8; line-height:1.9; letter-spacing:1px; text-align:center; }
+  .controls b { color:#eaf6ff; }
+  #pause, #garage { display:none; background:rgba(5,7,16,.78); }
+  #pause h1, #garage h1 { font-size:44px; letter-spacing:6px; }
+  .upg { pointer-events:auto; display:flex; justify-content:space-between; align-items:center; width:520px; max-width:88vw;
+    background:rgba(13,18,38,.9); border:1px solid #3b4a75; border-radius:8px; padding:12px 18px; margin-top:10px; }
+  .upg .nm { font-size:16px; letter-spacing:1px; } .upg .ds { font-size:12px; color:#9fb6d8; }
+  .upg .pips { color:#ffd94a; letter-spacing:3px; }
+  .upg button { cursor:pointer; padding:8px 18px; font-weight:700; border:none; border-radius:5px;
+    background:#ffd94a; color:#181002; letter-spacing:1px; }
+  .upg button:disabled { background:#3b4a75; color:#9fb6d8; cursor:default; }
+  #wasted { display:none; background:rgba(20,2,8,.72); }
+  #wasted h1 { background:none; color:#e33f5e; -webkit-text-fill-color:#e33f5e; text-shadow:0 0 34px rgba(227,63,94,.5); }
 </style>
-<script type="importmap">
-{"imports":{"three":"./vendor/three.module.min.js"}}
-</script>
 </head>
 <body>
 <div id="app"></div>
-<div id="loading">Loading Solmar City…</div>
 
-<div id="hud" class="hidden">
-  <div id="wantedFlash"></div>
-  <div id="objective"><div class="mtitle" id="objTitle">THE SOLMAR JOB</div>
-    <div class="mobj" id="objText">Talk to Mara Voss.</div>
-    <div class="msub" id="objSub"></div></div>
+<div class="overlay" id="hud">
   <div id="topbar">
-    <div id="stars"></div>
-    <div id="money">$0</div>
-    <div id="healthbar"><div id="healthfill"></div></div>
-    <div id="clock">08:00 · MARINA</div>
+    <div>
+      <div id="stars"><span>★</span><span>★</span><span>★</span><span>★</span><span>★</span></div>
+      <div id="wantedlabel">PORTO SIRENA PD</div>
+    </div>
+    <div id="wallet">
+      <div id="cash">$0</div>
+      <div id="respect">ROOKIE</div>
+      <div id="standing"></div>
+    </div>
   </div>
-  <div id="raceInfo" class="hidden"></div>
-  <div id="minimapWrap"><canvas id="minimap" width="230" height="230"></canvas></div>
-  <div id="speedo" class="hidden"><div class="spd"><span id="speedVal">0</span></div>
-    <div class="lbl">KM/H · <span id="carName">SEDAN</span></div></div>
-  <div id="radio">♪ <span class="st" id="radioStation">SOLMAR FM 92.1</span>
-    <span style="color:#9fb4d8">· R = station · M = mute</span></div>
-  <div id="respectPanel"></div>
-  <div id="weaponPanel"></div>
-  <div id="wheel" class="hidden"></div>
-  <div id="garagePanel" class="hidden"></div>
-  <div id="prompt" class="hidden"></div>
-  <div id="dialog" class="hidden"></div>
-  <div id="banner" class="hidden"></div>
-  <div id="toast" class="hidden"></div>
-  <div id="crosshair" class="hidden">＋</div>
+  <div id="objective"></div>
+  <div id="racehud"></div>
+  <div id="healthwrap">
+    <div id="healthlabel">NICO “TIDE” FERREIRA</div>
+    <div id="healthbar"><div id="healthfill"></div></div>
+    <div id="weaponlabel">FISTS</div>
+  </div>
+  <canvas id="minimap" width="190" height="190"></canvas>
+  <div id="prompt"></div>
+  <div id="dlg"><div id="dlgname"></div><div id="dlgtext"></div></div>
+  <div id="toast"></div>
+  <div id="crosshair">＋</div>
+  <div id="wheel">
+    <div class="wslot" id="w-fists">FISTS<small>key 1 · melee</small></div>
+    <div class="wslot" id="w-pistol">PISTOL<small>key 2 · steady</small></div>
+    <div class="wslot" id="w-smg">SMG<small>key 3 · rapid</small></div>
+  </div>
+  <div id="dmgflash"></div>
 </div>
 
-<div id="startScreen" class="screen hidden">
-  <h1>SOLMAR <span>HEAT</span></h1>
-  <h2>Solmar City. Five districts, one last job. You are Riko “Vex” Marlowe —
-  getaway driver, fresh out of prison. Mara Voss has eight jobs for you,
-  ending on the Solmar Star casino yacht. Steal cars, outrun the roadblocks,
-  win the street races, earn the city's respect — and get paid.</h2>
-  <div><button class="btn" id="btnStart">▶ &nbsp;START THE JOB</button>
-  <button class="btn ghost hidden" id="btnContinue">CONTINUE — <span id="contInfo"></span></button></div>
-  <div class="keys"><b>WASD</b> move / drive &nbsp;·&nbsp; <b>E</b> steal car, garage &amp; interact
-  &nbsp;·&nbsp; <b>Q + 1/2/3</b> weapon wheel &nbsp;·&nbsp; <b>F</b> punch &nbsp;·&nbsp; <b>Click</b> shoot
-  &nbsp;·&nbsp; <b>Shift</b> sprint / nitro &nbsp;·&nbsp; <b>R</b> radio &nbsp;·&nbsp; <b>P</b> pause</div>
-  <div class="foot">An original game. Solmar City, its people and its story are invented —
-  nothing from any commercial game. Runs offline, no network. MIT licensed.</div>
+<div class="screen" id="menu">
+  <h1>NEON TIDE</h1>
+  <h2>PORTO SIRENA · ONE LAST CHAIN OF JOBS</h2>
+  <p>Nico “Tide” Ferreira swore he was done running for Sable Ivers. Then the rain came back,
+     the ferry casino <i>Sirena Queen</i> docked for one night, and Sable called in the old debt.
+     Steal cars. Run the jobs. Outrun the heat — <b>the hotter you are, the bigger the payout.</b></p>
+  <button class="btn" id="btn-new">NEW GAME — ENTER</button>
+  <button class="btn ghost" id="btn-continue" style="display:none">CONTINUE SAVED RUN</button>
+  <div class="controls">
+    <b>WASD</b> move / drive · <b>Shift</b> run · nitro · <b>E</b> steal / enter / use ·
+    <b>F</b> melee · <b>Mouse</b> aim + click shoot<br>
+    <b>Q</b> weapon wheel (or <b>1 2 3</b>) · <b>Space</b> handbrake · <b>Esc</b> pause ·
+    Follow the <b style="color:#ffd94a">gold marker</b> to work the chain.
+  </div>
 </div>
 
-<div id="pauseMenu" class="screen hidden">
-  <h1 style="font-size:44px">PAUSED</h1>
-  <h2>Solmar City waits for no one — except right now.</h2>
-  <div><button class="btn" id="btnResume">RESUME</button>
-  <button class="btn ghost" id="btnSaveQuit">SAVE &amp; QUIT TO MENU</button></div>
-  <div class="keys">Progress auto-saves at the Old Town safehouse.<br>
-  <b>R</b> radio station &nbsp;·&nbsp; <b>M</b> mute &nbsp;·&nbsp; <b>C</b> camera</div>
+<div class="screen" id="pause">
+  <h1>PAUSED</h1>
+  <p id="pausestats"></p>
+  <button class="btn" id="btn-resume">RESUME — ESC</button>
+  <button class="btn ghost" id="btn-save">SAVE &amp; TITLE</button>
 </div>
 
-<div id="completeScreen" class="screen hidden">
-  <h1>THE SOLMAR JOB — DONE</h1>
-  <h2 id="completeText">The yacht is yours. Mara is already counting the take.
-  Solmar City will remember the name Vex.</h2>
-  <div><button class="btn" id="btnFreeRoam">KEEP DRIVING — FREE ROAM</button>
-  <button class="btn ghost" id="btnAgain">PLAY AGAIN</button></div>
+<div class="screen" id="garage">
+  <h1>TIDEWORKS GARAGE</h1>
+  <p>Spend hard-earned cash. Upgrades ride with Nico in every car he steals — and they save.</p>
+  <div id="upgrades"></div>
+  <button class="btn" id="btn-garage-close">BACK TO THE STREET — E</button>
 </div>
 
+<div class="screen" id="wasted">
+  <h1>BUSTED FLAT</h1>
+  <p>The tide takes a cut of everything. You wake up outside the precinct, lighter in the pocket.</p>
+  <button class="btn" id="btn-wake">WAKE UP — ENTER</button>
+</div>
+
+<script type="importmap">{ "imports": { "three": "./vendor/three.min.js" } }</script>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

@@ -1,91 +1,66 @@
-// Screenshot mode (v8): ?shot=N sets up a deterministic scene (player/car
-// position, wanted level, active mission, time of day) so the four
-// screenshots can be retaken with identical content. The v8 scenes show
-// the new systems: 1 = five-star chase with helicopter + roadblock,
-// 2 = roadblock close-up, 3 = street-race start grid, 4 = the garage.
-import * as THREE from 'three';
+// shots.js — deterministic screenshot scenes. ?shot=1..4 poses the running
+// game (real simulation, real HUD) so the maker's screenshots are reproducible:
+// the same seed builds the same city, and each shot places Nico, cars, police
+// and the objective exactly where the cover needs them.
 
-export function applyShotMode(G) {
-  const q = new URLSearchParams(location.search);
-  const shot = Number(q.get('shot') || 0);
-  if (!shot) return false;
-  G.shotMode = shot;
+import { makeCar } from './vehicles.js';
+
+export function applyShot(G, n) {
   const P = G.player;
-  const L = G.city.landmarks;
-
-  function placeCarAt(x, z, heading, type = 'sport') {
-    const car = G.parkedCars.find((c) => c.type === type) || G.parkedCars[0];
-    car.parked = false;
-    car.x = x; car.z = z; car.heading = heading; car.speed = 30;
-    car.mesh.position.set(x, 0, z);
-    car.mesh.rotation.y = heading;
-    P.car = car;
-    P.onFoot = false;
-    P.pos.set(x, 0, z);
+  const put = (x, z, heading) => {
+    P.group.position.set(x, G.city.groundHeight(x, z), z);
     P.heading = heading;
-    return car;
+  };
+  if (n === 1) {
+    // COVER: a rainy chase up the Harborfront road, roadblock ahead.
+    G.setMood('dusk'); G.rain.visible = true;
+    const car = makeCar('sport', 0xc23b4e, -26, 118, Math.PI);
+    car.driver = 'player'; car.playerDriven = true;
+    G.scene.add(car.group); G.cars.push(car);
+    P.inCar = car; P.group.visible = false;
+    car.speed = 16;
+    put(-26, 118, Math.PI);
+    for (const [dx, dz] of [[-2.5, 12], [3, 20]]) {
+      const cop = makeCar('cop', 0xf2f2f5, -26 + dx, 118 + dz, Math.PI);
+      cop.driver = 'police'; cop.speed = 15;
+      G.scene.add(cop.group); G.cars.push(cop); G.police.cars.push(cop);
+    }
+    G.police.heat = 3.3; G.wanted = 3;
+    G.police.lastKnown = { x: -26, z: 118 };
+    G.police.setRoadblock(G);
+    // Pull the roadblock into the cover frame (it spawns 46 ahead).
+    const block = G.police.blocks[G.police.blocks.length - 1];
+    if (block) {
+      block.group.position.z += 18;
+      block.stripPos.z += 18;
+      for (const c of block.cars) c.group.position.z += 18;
+    }
+    G.hud.setObjective('<b>THE SIRENA JOB</b> — Lose the heat, or don’t. They pay more when you’re hot.');
+    G.shotDrive = true; // main.js keeps the car rolling so the chase is alive
+  } else if (n === 2) {
+    // Car theft on Velvet Row at night, neon everywhere.
+    G.setMood('night'); G.rain.visible = false;
+    const car = makeCar('sport', 0xf2b134, 77, 49, -0.5);
+    car.driver = 'parked';
+    G.scene.add(car.group); G.cars.push(car);
+    put(81, 45, -0.8);
+    G.hud.showPrompt('<b>E</b> — STEAL THE VANTARA GT');
+    G.hud.setObjective('<b>HOT WHEELS</b> — Steal the Vantara GT · 3m');
+  } else if (n === 3) {
+    // The mission beat: Sable, the ferry, the job.
+    G.setMood('dusk'); G.rain.visible = true;
+    put(20, 143, 0.3);
+    G.missions.marker = { x: 30, z: 178 };
+    G.hud.setObjective('<b>THE SIRENA JOB</b> — Board the Sirena Queen · 38m');
+    G.hud.showDialogue('SABLE IVERS', 'The Sirena Queen sails at midnight, Nico. The vault case is on her deck — board her, crack it, and do not get caught holding it.', 60);
+  } else if (n === 4) {
+    // On foot in Harborfront at dusk: people, traffic, lighthouse, cranes.
+    G.setMood('dusk'); G.rain.visible = true;
+    put(-36, 124, -0.85);
+    // Guarantee harbour life in frame: three locals on the dock road.
+    const spots = [[-44, 127], [-30, 128], [-48, 124]];
+    G.peds.slice(0, 3).forEach((ped, i) => ped.mesh.position.set(spots[i][0], 0.3, spots[i][1]));
+    G.hud.setObjective('<b>FIRST RUN</b> — Pick up the package behind Club Lumen · 190m');
   }
-
-  if (shot === 1) {
-    // COVER: five-star chase at golden hour — player in a sports car, two
-    // patrol cars closing in, a roadblock ahead and the helicopter up.
-    G.timeOfDay = 0.46;
-    placeCarAt(0, 60, Math.PI, 'sport');
-    P.wanted = 5;
-    P.money = 12400;
-    G.missions.index = 6;
-    G.missions.step = 0;
-    G.missions.active = true;
-    G.hud.setObjective('HEAT RISING', 'Survive 60 seconds at 5 stars — the helicopter is up', 'Mission 7/8 · Reward $8,000');
-    G._shotPoliceSpots = [{ x: -4, z: 30 }, { x: 4, z: 26 }];
-    G._shotBlockAhead = true;
-    G._shotHeliFront = true;
-    G.audio.siren(true);
-  } else if (shot === 2) {
-    // ROADBLOCK: stopped short of the spikes, patrol cars across the road,
-    // light bars flashing, three stars.
-    G.timeOfDay = 0.47;
-    const car = placeCarAt(0, 84, Math.PI, 'sport');
-    car.speed = 0;
-    P.wanted = 3;
-    P.money = 4700;
-    G.missions.index = 2;
-    G.missions.step = 1;
-    G.missions.active = true;
-    G.hud.setObjective('CONTAINER HEIST', 'Escape to the Playa beach — lose the tail', 'Mission 3/8 · Reward $3,500');
-    G._shotBlockAhead = true;
-    G.audio.siren(true);
-  } else if (shot === 3) {
-    // RACE START: staged on the Strip Dash start line, engine off, two
-    // rival cars gridded ahead on the green start pad.
-    G.timeOfDay = 0.48;
-    const car = placeCarAt(-174, 120, Math.PI / 2, 'sport');
-    car.speed = 0;
-    P.wanted = 0;
-    P.money = 2600;
-    G.missions.index = 0;
-    G.missions.step = 1;
-    G.missions.active = true;
-    G.hud.setObjective('STRIP DASH', 'Street race — beat the pack to the Playa', 'Side event · Prize $1,500');
-    G._shotRaceGrid = 'strip-dash';
-  } else if (shot === 4) {
-    // GARAGE: parked up facing the Docks garage, cyan beacon + signs,
-    // upgrade prompt up — ENGINE 1 / NITRO 2 fitted for the speedo readout.
-    G.timeOfDay = 0.45;
-    const car = placeCarAt(176, 134, -Math.PI / 2, 'sport');
-    car.speed = 0;
-    P.wanted = 0;
-    P.money = 5000;
-    G.missions.index = 1;
-    G.missions.step = 0;
-    G.missions.active = true;
-    G.hud.setObjective('DOCKS GARAGE', 'Fit ENGINE, ARMOR and NITRO — upgrades are permanent', 'Side system · Docks');
-    G._shotGarage = true;
-  }
-
-  G.state = 'playing';
-  G.hud.hideStart();
-  G.hud.showHud();
-  G.audio.unlock();
-  return true;
+  G.hud.update(G);
 }

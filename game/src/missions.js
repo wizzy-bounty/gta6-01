@@ -1,299 +1,333 @@
-// The Solmar Job: 8 chained story missions. Each mission is a list of steps
-// (reach a marker, hold E to work, steal a car, lose the cops, survive the
-// heat, clear the guards). The engine moves a 3D beacon to the current
-// target, updates the HUD objective, pays the reward and advances the chain.
+// missions.js — "The Neon Tide": Sable Ivers' six-job chain. Reach the gold
+// marker to take a job; each job is a short chain of stages (go, steal,
+// deliver, lose the heat, fight, race, hold, escape). Payouts grow with the
+// wanted stars showing when the job closes and with district standing.
+
 import * as THREE from 'three';
-import { spawnEnemies, clearEnemies } from './combat.js';
-import { rankOf, standingOf } from './respect.js';
+import { makeCar } from './vehicles.js';
+import { steerToward } from './vehicles.js';
+import { districtAt } from './city.js';
+
+const SABLE = 'SABLE IVERS';
 
 export const MISSIONS = [
   {
-    id: 1, title: 'FIRST WHEELS', reward: 500, district: 'Neon Strip',
-    briefing: '"Vex. You\'re out. I need wheels and I need you. Steal a car — any car — then come find me on the Strip."',
-    steps: [
-      { kind: 'steal', text: 'Steal a car — walk up to a parked car and press E' },
-      { kind: 'reach', x: 6, z: 6, r: 6, text: 'Drive to Mara Voss on the Neon Strip' },
+    title: 'FIRST RUN', district: 'velvet', pay: 400,
+    intro: 'Nico. One package, Velvet Row to the docks, no questions. Drive like the rain is chasing you.',
+    outro: 'Clean. The tide remembers a steady hand.',
+    stages: [
+      { type: 'goto', at: [104, 84], label: 'Pick up the package behind Club Lumen' },
+      { type: 'goto', at: [-52, 124], label: 'Drop the package at the Harborfront dock' },
     ],
   },
   {
-    id: 2, title: 'DOCKS RUN', reward: 1200, district: 'Docks',
-    briefing: '"First job is simple. A package is waiting at the Docks. Bring it back to me — no cops, no noise."',
-    steps: [
-      { kind: 'hold', x: 180, z: 180, r: 6, hold: 2, text: 'Pick up the package at the Docks — hold E' },
-      { kind: 'reach', x: 6, z: 6, r: 6, text: 'Bring the package back to Mara' },
+    title: 'HOT WHEELS', district: 'cannery', pay: 700,
+    intro: 'A collector in the Cannery Yards left a Vantara GT unlocked. It belongs to me now. Bring it to Tideworks.',
+    outro: 'She purrs. Tideworks will lose the plates by dawn.',
+    stages: [
+      { type: 'steal', at: [52, -84], label: 'Steal the Vantara GT in the Cannery Yards' },
+      { type: 'deliver', at: [-108, 52], label: 'Deliver the GT to Tideworks Garage' },
     ],
   },
   {
-    id: 3, title: 'CONTAINER HEIST', reward: 3500, district: 'Docks',
-    briefing: '"The yard crew leaves a container unguarded at dawn. Grab the crate inside, then vanish. This one will be loud."',
-    steps: [
-      { kind: 'hold', x: 130, z: 210, r: 6, hold: 3, text: 'Crack the container — hold E (this will raise the heat)', loud: true },
-      { kind: 'reach', x: -160, z: 290, r: 8, text: 'Escape to the Playa beach — lose the tail' },
+    title: 'HEAT CHECK', district: 'alto', pay: 900,
+    intro: 'The PD has your face on every screen in Alto Verde. Get to my safehouse — then vanish until the stars go out.',
+    outro: 'Ghost. That is worth money in this town.',
+    stages: [
+      { type: 'goto', at: [-92, -104], label: 'Reach the Alto Verde safehouse' },
+      { type: 'loseheat', label: 'Lose the heat: break sight and stay hidden' },
     ],
   },
   {
-    id: 4, title: 'GETAWAY DRIVER', reward: 2000, district: 'Old Town',
-    briefing: '"You\'re hot, Vex. Cool off. When the stars are gone, bring the car to the safehouse in Old Town."',
-    steps: [
-      { kind: 'cooldown', text: 'Lose the wanted level — hide until the stars clear' },
-      { kind: 'reach', x: -150, z: -138, r: 7, text: 'Reach the Old Town safehouse' },
+    title: 'CANNERY KINGS', district: 'cannery', pay: 1200,
+    intro: 'The Dockers Union stopped paying their cut. Three of their enforcers are drinking in the Yards. Correct them.',
+    outro: 'The Yards pay again. You are getting expensive, Tide.',
+    stages: [
+      { type: 'fight', at: [78, -52], count: 3, label: 'Take out the Dockers enforcers' },
+      { type: 'goto', at: [26, -110], label: 'Leave the Cannery Yards' },
     ],
   },
   {
-    id: 5, title: 'CASINO RECON', reward: 4000, district: 'Marina',
-    briefing: '"The Solmar Star. The yacht casino. I need eyes on it before the big night — get on board, scan the vault door, get out. Guards patrol the pier."',
-    steps: [
-      { kind: 'reach', x: 288, z: -150, r: 7, text: 'Get to the Solmar Star yacht in the Marina (on foot)' },
-      { kind: 'hold', x: 292, z: -150, r: 6, hold: 3, text: 'Scan the vault door — hold E', guards: 2 },
+    title: 'NEON GRAND PRIX', district: 'velvet', pay: 1500,
+    intro: 'Velvet Row runs a midnight circuit and the pot is fat. Two laps, three locals, no friends out there.',
+    outro: 'The Row will talk about that finish for a month.',
+    stages: [
+      { type: 'race', at: [-26, -40], label: 'Win the Neon Grand Prix (2 laps)' },
     ],
   },
   {
-    id: 6, title: 'THE INSIDE MAN', reward: 6000, district: 'Old Town',
-    briefing: '"I\'m riding with you tonight. Pick me up, then take me to the Old Town fixer. His crew is not friendly — be ready."',
-    steps: [
-      { kind: 'reach', x: 6, z: 6, r: 6, text: 'Pick up Mara on the Strip' },
-      { kind: 'reach', x: -180, z: -60, r: 8, text: 'Drive Mara to the Old Town fixer', guards: 3 },
-      { kind: 'clear', text: 'Clear the fixer\'s crew — F to punch, click to shoot' },
-      { kind: 'reach', x: -150, z: -138, r: 7, text: 'Get Mara to the safehouse' },
-    ],
-  },
-  {
-    id: 7, title: 'HEAT RISING', reward: 8000, district: 'Airfield & Playa',
-    briefing: '"The whole city is looking for us now. Four stars, a helicopter — survive sixty seconds, then run for the airfield."',
-    steps: [
-      { kind: 'survive', seconds: 60, wanted: 4, text: 'Survive 60 seconds at 4 stars — the helicopter is up' },
-      { kind: 'reach', x: -210, z: 150, r: 9, text: 'Reach the airfield runway' },
-    ],
-  },
-  {
-    id: 8, title: 'THE SOLMAR JOB', reward: 50000, district: 'Marina',
-    briefing: '"Tonight. The Solmar Star. We walk on, we take the vault, we walk off rich. This is the one, Vex — make it count."',
-    steps: [
-      { kind: 'reach', x: 288, z: -150, r: 7, text: 'Board the Solmar Star one last time' },
-      { kind: 'hold', x: 292, z: -150, r: 6, hold: 4, text: 'Crack the vault — hold E', guards: 3, loud: true },
-      { kind: 'reach', x: -150, z: -138, r: 7, text: 'Escape to the safehouse with the take' },
+    title: 'THE SIRENA JOB', district: 'harbor', pay: 3000,
+    intro: 'Tonight the Sirena Queen carries the Meridian vault case. Board her, hold the vault six seconds, and bring me the case.',
+    outro: 'The tide goes out, and we are rich. Pleasure, Nico. Do not call me again.',
+    stages: [
+      { type: 'goto', at: [30, 148], label: 'Go to the Sirena Queen at the dock' },
+      { type: 'goto', at: [30, 178], foot: true, label: 'Board the Sirena Queen (on foot, up the gangplank)' },
+      { type: 'hold', at: [22, 192], seconds: 6, guards: 2, label: 'Crack the vault case — hold your ground' },
+      { type: 'escape', at: [-92, -104], label: 'Escape to the Alto Verde safehouse' },
     ],
   },
 ];
 
-export function createMissions(scene) {
-  // 3D beacon: a light pillar + a spinning diamond over the current target.
-  const beacon = new THREE.Group();
-  const pillar = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.6, 1.6, 60, 12, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }),
-  );
-  pillar.position.y = 30;
-  beacon.add(pillar);
-  const gem = new THREE.Mesh(new THREE.OctahedronGeometry(1.6),
-    new THREE.MeshBasicMaterial({ color: 0xffd23f }));
-  gem.position.y = 10;
-  beacon.add(gem);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(3, 4.4, 24),
-    new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.15;
-  beacon.add(ring);
-  beacon.visible = false;
-  scene.add(beacon);
-  return {
-    index: 0, step: 0, holdT: 0, surviveT: 0, beacon, gem, pillar,
-    active: false, done: false, guardsSpawned: false, stepDoneFlash: 0,
-  };
-}
-
-export function currentMission(missions) {
-  return MISSIONS[Math.min(missions.index, MISSIONS.length - 1)];
-}
-
-export function currentStep(missions) {
-  const m = currentMission(missions);
-  return m.steps[Math.min(missions.step, m.steps.length - 1)];
-}
-
-// Objective sub-line with the v8 respect context: your rank, and your
-// standing in the district this mission runs in.
-function objectiveSub(G, m, index) {
-  let sub = `Mission ${index + 1}/8 · Reward $${m.reward.toLocaleString('en-US')}`;
-  if (G.respect) {
-    sub += ` · Respect: ${rankOf(G.respect.total).name}`;
-    if (m.district) sub += ` · ${m.district} standing ${standingOf(G.respect, m.district)}%`;
+export class Missions {
+  constructor(scene, G) {
+    this.scene = scene;
+    this.index = 0; this.stageIndex = 0;
+    this.state = 'offer';            // offer | active | done
+    this.marker = null;              // {x, z} for HUD + beacon
+    this.stage = null; this.holdT = 0; this.fightFoes = [];
+    this.stealCar = null; this.race = null;
+    const geo = new THREE.CylinderGeometry(1.3, 1.3, 34, 12, 1, true);
+    this.beacon = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      color: 0xffd94a, transparent: true, opacity: 0.33, side: THREE.DoubleSide, depthWrite: false,
+    }));
+    this.beacon.position.y = 17; scene.add(this.beacon);
+    this.ring = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.14, 8, 28),
+      new THREE.MeshBasicMaterial({ color: 0xffd94a }));
+    this.ring.rotation.x = Math.PI / 2; scene.add(this.ring);
+    this.setOfferMarker(G);
   }
-  return sub;
-}
 
-// Mara's briefing, with a standing flavour line when the mission's
-// district already vouches for you (standing 50+ = faster wanted cooldown).
-function briefingFor(G, m) {
-  if (G.respect && m.district && standingOf(G.respect, m.district) >= 50) {
-    return m.briefing + ` "And Vex — ${m.district} is ours now. The block covers for you there; the heat cools faster."`;
-  }
-  return m.briefing;
-}
+  meetPoint() { return { x: 84, z: 52 }; }  // under the Velvet Row arch
 
-export function startMission(G, index) {
-  const ms = G.missions;
-  ms.index = index;
-  ms.step = 0;
-  ms.holdT = 0;
-  ms.surviveT = 0;
-  ms.active = true;
-  ms.done = false;
-  ms.guardsSpawned = false;
-  const m = MISSIONS[index];
-  G.hud.setObjective(m.title, m.steps[0].text, objectiveSub(G, m, index));
-  G.hud.say('MARA VOSS', briefingFor(G, m));
-  G.audio.pickup();
-}
-
-function advanceStep(G) {
-  const ms = G.missions;
-  const m = currentMission(ms);
-  ms.step++;
-  ms.holdT = 0;
-  ms.surviveT = 0;
-  ms.guardsSpawned = false;
-  if (ms.step >= m.steps.length) {
-    completeMission(G);
-    return;
-  }
-  const s = m.steps[ms.step];
-  G.hud.setObjective(m.title, s.text, objectiveSub(G, m, ms.index));
-  G.audio.pickup();
-  if (s.kind === 'survive' && s.wanted) {
-    G.player.wanted = Math.max(G.player.wanted, s.wanted);
-    G.player.wantedTimer = 0;
-    G.hud.toast('WANTED LEVEL 4 — the helicopter is hunting you!');
-  }
-}
-
-function completeMission(G) {
-  const ms = G.missions;
-  const m = currentMission(ms);
-  G.player.money += m.reward;
-  G.hud.banner(`MISSION COMPLETE`, `+ $${m.reward.toLocaleString('en-US')} — ${m.title}`);
-  G.audio.missionComplete();
-  // v8: a finished job earns respect in the district it ran in.
-  if (G.awardRespect) G.awardRespect(m.district, 60, `the ${m.title} job`);
-  ms.beacon.visible = false;
-  if (ms.index >= MISSIONS.length - 1) {
-    ms.done = true;
-    ms.active = false;
-    G.state = 'complete';
-    G.hud.showComplete();
-    return;
-  }
-  ms.index++;
-  ms.step = 0;
-  ms.holdT = 0;
-  ms.surviveT = 0;
-  ms.guardsSpawned = false;
-  const next = MISSIONS[ms.index];
-  G.hud.setObjective(next.title, next.steps[0].text, objectiveSub(G, next, ms.index));
-  setTimeout(() => G.hud.say('MARA VOSS', briefingFor(G, next)), 1800);
-}
-
-function failMission(G, reason) {
-  const ms = G.missions;
-  G.hud.banner('MISSION FAILED', reason);
-  G.audio.missionFail();
-  ms.step = 0;
-  ms.holdT = 0;
-  ms.surviveT = 0;
-  ms.guardsSpawned = false;
-  const m = currentMission(ms);
-  G.hud.setObjective(m.title, m.steps[0].text, objectiveSub(G, m, ms.index));
-  G.hud.say('MARA VOSS', '"Again. From the top — ' + m.title + '."');
-}
-
-export function updateMissions(G, dt) {
-  const ms = G.missions;
-  if (!ms.active || ms.done) return;
-  const m = currentMission(ms);
-  const s = currentStep(ms);
-  const p = G.player.pos;
-
-  // Spawn step guards once.
-  if (s.guards && !ms.guardsSpawned) {
-    ms.guardsSpawned = true;
-    const spots = [];
-    for (let i = 0; i < s.guards; i++) {
-      spots.push({ x: (s.x || 0) + 8 + i * 6, z: (s.z || 0) + 6 - i * 5 });
+  setOfferMarker(G) {
+    this.state = 'offer';
+    if (this.index >= MISSIONS.length) {
+      this.marker = null;
+      G.hud?.setObjective('THE NEON TIDE IS COMPLETE — Porto Sirena is yours. The garage, the races, the rain.');
+      return;
     }
-    spawnEnemies(G.combat, spots);
-    G.hud.toast(`${s.guards} armed guard${s.guards > 1 ? 's' : ''} on site!`);
+    const m = this.meetPoint();
+    this.marker = m;
   }
 
-  // Move the beacon to the current target (or hide it for non-position steps).
-  if (s.x !== undefined) {
-    ms.beacon.visible = true;
-    ms.beacon.position.set(s.x, 0, s.z);
-    ms.gem.rotation.y += dt * 2;
-    ms.gem.position.y = 10 + Math.sin(G.time * 2.4) * 0.8;
-  } else {
-    ms.beacon.visible = false;
+  startMission(G) {
+    const def = MISSIONS[this.index];
+    this.state = 'active'; this.stageIndex = 0;
+    G.hud?.showDialogue(SABLE, def.intro, 6.5);
+    G.audio?.blip();
+    this.beginStage(G);
   }
 
-  const dist = s.x !== undefined ? Math.hypot(p.x - s.x, p.z - s.z) : 999;
+  beginStage(G) {
+    const def = MISSIONS[this.index];
+    const st = def.stages[this.stageIndex];
+    this.stage = st; this.holdT = 0; this.fightFoes = [];
+    if (st.type === 'steal') {
+      const car = makeCar('sport', 0xf2b134, st.at[0], st.at[1], Math.PI / 2);
+      car.driver = 'parked'; car.isJobCar = true;
+      this.scene.add(car.group); G.cars.push(car); this.stealCar = car;
+      this.marker = { x: st.at[0], z: st.at[1] };
+    } else if (st.type === 'fight') {
+      for (let i = 0; i < st.count; i++) {
+        const a = (i / st.count) * Math.PI * 2;
+        const foe = G.combat.spawnEnemy(st.at[0] + Math.sin(a) * 6, st.at[1] + Math.cos(a) * 6, { coat: 0x6e5136, tag: 'docker' });
+        this.fightFoes.push(foe);
+      }
+      this.marker = { x: st.at[0], z: st.at[1] };
+    } else if (st.type === 'hold' && st.guards) {
+      for (let i = 0; i < st.guards; i++) {
+        const foe = G.combat.spawnEnemy(st.at[0] + (i ? 9 : -9), st.at[1] - 6, { coat: 0x24344e, tag: 'guard' });
+        this.fightFoes.push(foe);
+      }
+      this.marker = { x: st.at[0], z: st.at[1] };
+    } else if (st.type === 'race') {
+      this.marker = { x: st.at[0], z: st.at[1] };
+    } else if (st.type === 'loseheat') {
+      G.police.heat = Math.max(G.police.heat, 2.4);
+      G.police.lastKnown = { x: G.player.group.position.x, z: G.player.group.position.z };
+      this.marker = null;
+    } else {
+      this.marker = { x: st.at[0], z: st.at[1] };
+    }
+  }
 
-  switch (s.kind) {
-    case 'steal':
-      if (!G.player.onFoot) advanceStep(G);
-      break;
-    case 'reach':
-      if (dist < (s.r || 6)) advanceStep(G);
-      break;
-    case 'hold': {
-      const near = dist < (s.r || 6);
-      const holding = near && G.input.isDown('KeyE');
-      if (holding) {
-        ms.holdT += dt;
-        G.hud.setHoldProgress(ms.holdT / s.hold);
-        if (ms.holdT >= s.hold) {
-          G.hud.setHoldProgress(0);
-          if (s.loud) {
-            G.player.wanted = Math.min(5, G.player.wanted + 2);
-            G.player.wantedTimer = 0;
-            G.audio.wantedUp();
-            G.hud.toast('The alarm is ringing — wanted level up!');
-          }
-          advanceStep(G);
+  completeStage(G) {
+    const def = MISSIONS[this.index];
+    this.stageIndex++;
+    if (this.stageIndex < def.stages.length) { this.beginStage(G); return; }
+    // job done: the hotter the close, the bigger the money
+    // (the Grand Prix pays by finishing place inside endRace instead)
+    const heatBonus = 1 + 0.15 * G.wanted;
+    const standingBonus = 1 + Math.min(0.5, 0.05 * (G.standing[def.district] || 0));
+    const payout = this.skipPayout ? 0 : Math.round(def.pay * heatBonus * standingBonus);
+    this.skipPayout = false;
+    G.cash += payout; G.totalEarned += payout;
+    G.standing[def.district] = (G.standing[def.district] || 0) + 1;
+    if (payout > 0) G.hud?.toast(`JOB DONE — $${payout.toLocaleString('en-US')}`);
+    G.hud?.showDialogue(SABLE, def.outro, 5.5);
+    G.audio?.cash();
+    this.index++;
+    this.setOfferMarker(G);
+    G.saveGame?.();
+  }
+
+  /** The street race: 3 AI rivals, 8 checkpoints a lap, 2 laps. */
+  startRace(G) {
+    const cps = G.city.raceCheckpoints;
+    const racers = [];
+    const colors = [0xc23b4e, 0x3b7dc2, 0x53c24a];
+    for (let i = 0; i < 3; i++) {
+      const car = makeCar('racer', colors[i], cps[0].x - 6 + i * 5, cps[0].z - 7 - i * 4, 0.6);
+      car.driver = 'racer'; car.racerNitro = true;
+      this.scene.add(car.group); G.cars.push(car); racers.push(car);
+    }
+    this.race = {
+      active: true, racers, cpIndex: 0, lap: 1, laps: 2, time: 0,
+      foeCp: racers.map(() => 0), foeLap: racers.map(() => 1), finished: false,
+      rings: cps.map((cp, i) => {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(3.4, 0.3, 8, 24),
+          new THREE.MeshBasicMaterial({ color: i === 0 ? 0x54e0ff : 0x2a4a66 }));
+        ring.position.set(cp.x, 2.2, cp.z); this.scene.add(ring); return ring;
+      }),
+      nextCp: cps[0],
+    };
+    G.hud?.toast('NEON GRAND PRIX — 2 LAPS');
+  }
+
+  endRace(G, payout, label) {
+    const race = this.race;
+    for (const car of race.racers) {
+      this.scene.remove(car.group);
+      G.cars = G.cars.filter((c) => c !== car);
+    }
+    for (const ring of race.rings) this.scene.remove(ring);
+    this.race = null;
+    G.hud?.setRace('');
+    if (payout > 0) {
+      G.cash += payout; G.totalEarned += payout;
+      G.hud?.toast(label + ` — $${payout.toLocaleString('en-US')}`);
+      G.audio?.cash();
+    } else G.hud?.toast(label);
+  }
+
+  updateRace(dt, G) {
+    const race = this.race, cps = G.city.raceCheckpoints;
+    race.time += dt;
+    const car = G.player.inCar;
+    const progress = (lap, cpIdx, pos) => {
+      const cp = cps[cpIdx % cps.length];
+      return (lap - 1) * cps.length + cpIdx - Math.min(1, Math.hypot(cp.x - pos.x, cp.z - pos.z) / 60);
+    };
+    // player
+    let playerProg = -1;
+    if (car) {
+      const cp = cps[race.cpIndex];
+      const d = Math.hypot(cp.x - car.group.position.x, cp.z - car.group.position.z);
+      if (d < 7.5) {
+        G.audio?.checkpoint();
+        race.cpIndex++;
+        if (race.cpIndex >= cps.length) { race.cpIndex = 0; race.lap++; }
+        if (race.lap > race.laps) {
+          const place = 1 + race.foeLap.filter((l, i) => l > race.laps || (l === race.laps && race.foeCp[i] > 0)).length;
+          const frac = [1, 0.6, 0.35, 0.2][Math.min(3, place - 1)];
+          this.endRace(G, Math.round(MISSIONS[this.index].pay * frac), `FINISHED ${['1ST', '2ND', '3RD', '4TH'][place - 1]}`);
+          this.skipPayout = true;
+          this.completeStage(G);
+          return;
         }
-      } else {
-        ms.holdT = Math.max(0, ms.holdT - dt * 2);
-        G.hud.setHoldProgress(ms.holdT / s.hold);
+        G.hud?.toast(`LAP ${race.lap} OF ${race.laps}`);
       }
-      break;
+      race.nextCp = cps[race.cpIndex];
+      this.marker = race.nextCp;
+      playerProg = progress(race.lap, race.cpIndex, car.group.position);
     }
-    case 'cooldown':
-      if (G.player.wanted === 0) advanceStep(G);
-      break;
-    case 'survive':
-      ms.surviveT += dt;
-      G.hud.setObjective(m.title, `${s.text} — ${Math.ceil(s.seconds - ms.surviveT)}s left`, `Mission ${ms.index + 1}/8`);
-      if (G.player.wanted < (s.wanted || 4)) {
-        G.player.wanted = s.wanted || 4;
-        G.player.wantedTimer = 0;
+    // rivals, with a whisper of rubber-banding so the race stays a race
+    race.racers.forEach((foe, i) => {
+      const cp = cps[race.foeCp[i]];
+      const d = steerToward(foe, cp.x, cp.z, dt, G, { cruise: foe.spec.top * 0.86 * (foe.cruiseAdjust || 1) });
+      if (d < 7.5) {
+        race.foeCp[i]++;
+        if (race.foeCp[i] >= cps.length) { race.foeCp[i] = 0; race.foeLap[i]++; }
       }
-      if (ms.surviveT >= s.seconds) advanceStep(G);
-      break;
-    case 'clear':
-      if (G.combat.enemies.length === 0 && ms.guardsSpawned) advanceStep(G);
-      break;
-    default:
-      break;
+      const foeProg = progress(race.foeLap[i], race.foeCp[i], foe.group.position);
+      foe.cruiseAdjust = foeProg > playerProg + 0.6 ? 0.94 : foeProg < playerProg - 0.6 ? 1.05 : 1;
+    });
+    race.rings.forEach((ring, i) => {
+      ring.material.color.setHex(i === race.cpIndex ? 0x54e0ff : 0x2a4a66);
+      ring.rotation.z += dt * 0.8;
+    });
+    if (car) {
+      const ahead = race.racers.filter((f, i) => progress(race.foeLap[i], race.foeCp[i], f.group.position) > playerProg).length;
+      G.hud?.setRace(`GRAND PRIX · LAP ${Math.min(race.lap, race.laps)}/${race.laps}<br>POSITION ${ahead + 1}/4 · ${race.time.toFixed(1)}s`);
+    }
+    if (!car && G.player.group.position) { /* on foot: race waits, rivals circle */ }
   }
 
-  // Death fails the mission (respawn at the safehouse, half the cash kept).
-  if (G.player.health <= 0) {
-    G.player.health = 100;
-    G.player.money = Math.floor(G.player.money / 2);
-    G.player.wanted = 0;
-    G.player.pos.set(-150, 0, -130);
-    G.player.heading = 0;
-    if (G.player.car) { G.player.car.parked = true; G.player.car = null; G.player.onFoot = true; }
-    clearEnemies(G.combat);
-    if (G.onPlayerDeath) G.onPlayerDeath();
-    failMission(G, 'You were taken down — Mara patched you up at the safehouse.');
+  update(dt, G) {
+    // beacon follows the marker
+    const show = !!this.marker && G.mode === 'playing';
+    this.beacon.visible = show; this.ring.visible = show;
+    if (this.marker) {
+      const gy = G.city.groundHeight(this.marker.x, this.marker.z);
+      this.beacon.position.x = this.marker.x; this.beacon.position.z = this.marker.z;
+      this.beacon.position.y = gy + 17;
+      this.ring.position.set(this.marker.x, gy + 0.4, this.marker.z);
+      this.ring.rotation.z += dt * 1.4;
+    }
+    const p = G.player.group.position;
+    this.offerPrompt = null;
+    if (this.state === 'offer') {
+      if (this.marker && Math.hypot(p.x - this.marker.x, p.z - this.marker.z) < 5) {
+        this.offerPrompt = '<b>E</b> — TAKE THE JOB: ' + MISSIONS[this.index].title;
+        if (G.input.wasPressed('KeyE')) this.startMission(G);
+      }
+      return;
+    }
+    if (this.state !== 'active' || !this.stage) return;
+    const def = MISSIONS[this.index];
+    const st = this.stage;
+    const dist = this.marker ? Math.hypot(p.x - this.marker.x, p.z - this.marker.z) : 0;
+    let label = st.label;
+    if (this.marker) label += ` · ${Math.round(dist)}m`;
+    if (st.type === 'fight') {
+      const left = this.fightFoes.filter((f) => !f.dead).length;
+      label += ` · ${left} still standing`;
+    }
+    if (st.type === 'hold') label += this.holdT > 0 ? ` · cracking… ${Math.round((this.holdT / st.seconds) * 100)}%` : '';
+    if (st.type === 'loseheat') label += ` · stars: ${G.wanted}`;
+    G.hud?.setObjective(`<b>${def.title}</b> — ${label}`);
+
+    switch (st.type) {
+      case 'goto':
+        if (dist < (st.foot ? 3.2 : 5.5) && (!st.foot || !G.player.inCar)) this.completeStage(G);
+        break;
+      case 'steal':
+        if (this.stealCar && G.player.inCar === this.stealCar) {
+          G.police.addCrime(1.3, p);
+          G.hud?.toast('THE GT IS HOT — DELIVER IT');
+          this.completeStage(G);
+        }
+        break;
+      case 'deliver':
+        if (dist < 7 && G.player.inCar === this.stealCar) this.completeStage(G);
+        break;
+      case 'loseheat':
+        if (G.wanted === 0 && G.police.heat <= 0.05) this.completeStage(G);
+        break;
+      case 'fight':
+        if (this.fightFoes.length && this.fightFoes.every((f) => f.dead)) this.completeStage(G);
+        break;
+      case 'race':
+        if (!this.race) {
+          if (dist < 6) {
+            if (G.player.inCar) this.startRace(G);
+            else this.offerPrompt = 'You need a car for the Grand Prix — steal one';
+          }
+        } else this.updateRace(dt, G);
+        break;
+      case 'hold':
+        if (dist < 3.6 && !G.player.inCar) {
+          this.holdT += dt;
+          if (this.holdT >= st.seconds) {
+            G.police.addCrime(3, p);
+            G.hud?.toast('CASE CRACKED — RUN');
+            this.completeStage(G);
+          }
+        } else this.holdT = Math.max(0, this.holdT - dt * 0.5);
+        break;
+      case 'escape':
+        if (dist < 6) this.completeStage(G);
+        break;
+    }
   }
 }

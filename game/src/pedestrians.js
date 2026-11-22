@@ -1,91 +1,104 @@
-// Pedestrians: capsule walkers on the sidewalks who wander between
-// intersections, wait at corners, and scatter away from a speeding car.
+// pedestrians.js — the people of Porto Sirena: capsule figures with a swinging
+// walk who stroll the sidewalk loop around their block, hurry away from gunfire
+// and reckless driving, and fall when hit (which the police notice).
+
 import * as THREE from 'three';
-import { mulberry32 } from './city.js';
 
-const SHIRTS = [0xe84a5a, 0x4a8ae8, 0x4ae88a, 0xe8c84a, 0x9a4ae8, 0xe88a4a, 0x4ae8e8, 0xe84a9a];
+const CENTERS = [-104, -52, 0, 52, 104];
+const COATS = [0xd8d8de, 0x3b7dc2, 0xc23b4e, 0x53c24a, 0xe0a52e, 0xf06bd8, 0x2ea8a0, 0x8a5fd0];
+const SKIN = [0xe8b98d, 0xc98a5a, 0x8a5a34, 0x6e4226, 0xf2cda7];
 
-export function createPedestrians(scene, count = 26) {
-  const rng = mulberry32(9911);
-  const peds = [];
-  const bodyGeo = new THREE.CapsuleGeometry(0.45, 0.9, 4, 8);
-  const headGeo = new THREE.SphereGeometry(0.32, 10, 8);
-  for (let i = 0; i < count; i++) {
-    const g = new THREE.Group();
-    const shirt = new THREE.MeshLambertMaterial({ color: SHIRTS[Math.floor(rng() * SHIRTS.length)] });
-    const body = new THREE.Mesh(bodyGeo, shirt);
-    body.position.y = 1.15;
-    g.add(body);
-    const head = new THREE.Mesh(headGeo, new THREE.MeshLambertMaterial({ color: 0xe8b88a }));
-    head.position.y = 2.15;
-    g.add(head);
-    const legMat = new THREE.MeshLambertMaterial({ color: 0x2a2a30 });
-    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.7, 0.22), legMat);
-    legL.position.set(-0.18, 0.35, 0);
-    g.add(legL);
-    const legR = legL.clone();
-    legR.position.x = 0.18;
-    g.add(legR);
-    scene.add(g);
-    const x = -240 + rng() * 480;
-    const z = -240 + rng() * 480;
-    const ped = {
-      group: g, legL, legR,
-      x, z, heading: rng() * Math.PI * 2,
-      speed: 1.2 + rng() * 1.4,
-      target: null, wait: rng() * 3, phase: rng() * Math.PI * 2,
-      fleeing: false,
-    };
-    ped.target = pickCorner(rng);
-    g.position.set(x, 0, z);
-    peds.push(ped);
-  }
-  return peds;
+export function makePerson(coat, skin) {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: coat, roughness: 0.9 });
+  const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.7 });
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.75, 0.24), new THREE.MeshStandardMaterial({ color: 0x23232e, roughness: 1 }));
+  legL.position.set(-0.14, 0.38, 0); g.add(legL);
+  const legR = legL.clone(); legR.position.x = 0.14; g.add(legR);
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.72, 0.3), mat);
+  torso.position.y = 1.1; g.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 10, 10), skinMat);
+  head.position.y = 1.68; g.add(head);
+  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.62, 0.18), mat);
+  armL.position.set(-0.38, 1.08, 0); g.add(armL);
+  const armR = armL.clone(); armR.position.x = 0.38; g.add(armR);
+  g.userData.parts = { legL, legR, armL, armR };
+  return g;
 }
 
-function pickCorner(rng) {
-  const gx = -240 + Math.floor(rng() * 9) * 60;
-  const gz = -240 + Math.floor(rng() * 9) * 60;
-  return { x: gx + (rng() < 0.5 ? -9 : 9), z: gz + (rng() < 0.5 ? -9 : 9) };
-}
-
-export function updatePedestrians(peds, dt, playerPos, playerSpeed, rng, playerWanted = 0) {
-  for (const p of peds) {
-    // Flee a fast car that comes close — or the sirens at wanted 3+ (v8):
-    // crowds clear the street when a real chase rolls through.
-    const pd = playerPos ? Math.hypot(playerPos.x - p.x, playerPos.z - p.z) : 999;
-    if ((playerSpeed > 8 && pd < 12) || (playerWanted >= 3 && pd < 15)) {
-      p.fleeing = true;
-      p.heading = Math.atan2(p.x - playerPos.x, p.z - playerPos.z);
-      p.speed = 5.5;
-    } else if (p.fleeing && pd > 22) {
-      p.fleeing = false;
-      p.speed = 1.2 + (rng ? rng() * 1.4 : 1);
-      p.target = pickCorner(rng || Math.random);
+export class Pedestrians {
+  constructor(scene, city, rng, G) {
+    this.peds = [];
+    let n = 0;
+    for (const cx of CENTERS) for (const cz of CENTERS) {
+      const count = cz === 104 ? 1 : 2;
+      for (let i = 0; i < count && n < 34; i++, n++) {
+        const loop = city.blockLoop(cx, cz, -5.4);
+        const mesh = makePerson(COATS[(n * 5) % COATS.length], SKIN[(n * 3) % SKIN.length]);
+        const start = loop[n % 4];
+        mesh.position.set(start.x, 0.3, start.z);
+        scene.add(mesh);
+        this.peds.push({
+          mesh, loop, wp: (n + 1) % 4, speed: 1.1 + rng() * 0.7, phase: rng() * 6,
+          health: 100, dead: false, panic: 0, heading: 0,
+        });
+      }
     }
-    if (!p.fleeing) {
-      if (p.wait > 0) { p.wait -= dt; }
-      else {
-        const dx = p.target.x - p.x, dz = p.target.z - p.z;
-        const d = Math.hypot(dx, dz);
-        if (d < 1.5) { p.wait = 1 + Math.random() * 3; p.target = pickCorner(rng || Math.random); }
-        else {
-          p.heading = Math.atan2(dx, dz);
-          p.x += Math.sin(p.heading) * p.speed * dt;
-          p.z += Math.cos(p.heading) * p.speed * dt;
+    G.peds = this.peds;
+  }
+
+  update(dt, G) {
+    const pp = G.player.group.position;
+    for (const ped of this.peds) {
+      if (ped.dead) continue;
+      const pos = ped.mesh.position;
+      const wp = ped.loop[ped.wp];
+      let tx = wp.x, tz = wp.z;
+      // panic: run directly away from the threat for a few seconds
+      if (ped.panic > 0) {
+        ped.panic -= dt;
+        tx = pos.x + (pos.x - pp.x); tz = pos.z + (pos.z - pp.z);
+      }
+      const dx = tx - pos.x, dz = tz - pos.z, d = Math.hypot(dx, dz);
+      if (d < 1.2 && ped.panic <= 0) ped.wp = (ped.wp + 1) % ped.loop.length;
+      const sp = ped.panic > 0 ? 4.6 : ped.speed;
+      if (d > 0.05) {
+        ped.heading = Math.atan2(dx, dz);
+        pos.x += Math.sin(ped.heading) * sp * dt;
+        pos.z += Math.cos(ped.heading) * sp * dt;
+      }
+      G.city.collide(pos, 0.45);
+      pos.y = 0.3 + G.city.groundHeight(pos.x, pos.z);
+      ped.mesh.rotation.y = ped.heading;
+      ped.phase += dt * (ped.panic > 0 ? 13 : 7);
+      const u = ped.mesh.userData.parts;
+      const swing = Math.sin(ped.phase) * 0.5;
+      u.legL.rotation.x = swing; u.legR.rotation.x = -swing;
+      u.armL.rotation.x = -swing * 0.7; u.armR.rotation.x = swing * 0.7;
+      // run down by a car?
+      for (const car of G.cars) {
+        if (car.dead || Math.abs(car.speed) < 4) continue;
+        const cp = car.group.position;
+        if (Math.abs(cp.x - pos.x) < 1.5 && Math.abs(cp.z - pos.z) < 2.2) {
+          this.knockDown(ped, G, car.playerDriven || car === G.player.inCar);
+          break;
         }
       }
-    } else {
-      p.x += Math.sin(p.heading) * p.speed * dt;
-      p.z += Math.cos(p.heading) * p.speed * dt;
+      // frightened by nearby gunfire / a wanted player sprinting past
+      if (G.combat?.shotsFiredAt && G.time - G.combat.shotsFiredAt < 0.4) {
+        if (pos.distanceTo(pp) < 17) ped.panic = 3;
+      }
     }
-    p.x = Math.max(-265, Math.min(265, p.x));
-    p.z = Math.max(-265, Math.min(265, p.z));
-    p.phase += dt * (p.fleeing ? 14 : 7) * (p.wait > 0 ? 0 : 1);
-    p.group.position.set(p.x, Math.abs(Math.sin(p.phase)) * 0.08, p.z);
-    p.group.rotation.y = p.heading;
-    const swing = Math.sin(p.phase) * 0.5;
-    p.legL.rotation.x = swing;
-    p.legR.rotation.x = -swing;
+  }
+
+  knockDown(ped, G, byPlayer) {
+    if (ped.dead) return;
+    ped.dead = true; ped.health = 0;
+    ped.mesh.rotation.x = -Math.PI / 2;
+    ped.mesh.position.y = 0.45;
+    if (byPlayer) {
+      G.police?.addCrime(1.2, ped.mesh.position);
+      G.hud?.toast('YOU HIT A PEDESTRIAN');
+    }
   }
 }

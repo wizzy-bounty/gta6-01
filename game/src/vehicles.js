@@ -1,163 +1,136 @@
-// Cars: low-poly box + cabin + wheels builds, plus arcade driving physics
-// (acceleration, steering that scales down with speed, braking, drift) and
-// the parked, stealable cars scattered around the city.
+// vehicles.js — every car in Porto Sirena: a low-poly body, cabin and wheels
+// built from boxes and cylinders, plus the arcade physics all drivers share
+// (player, traffic, police, racers): throttle, steering that bites with speed,
+// a handbrake that breaks the rear loose, and nitro when the garage fitted it.
+
 import * as THREE from 'three';
-import { mulberry32 } from './city.js';
 
-const CAR_TYPES = {
-  sedan: { color: 0x4a7ab3, top: 22, accel: 16, maxSpeed: 34, name: 'SEDAN' },
-  sport: { color: 0xd83a2a, top: 46, accel: 24, maxSpeed: 52, name: 'SPORT' },
-  taxi: { color: 0xe8c832, top: 20, accel: 15, maxSpeed: 32, name: 'TAXI' },
-  truck: { color: 0x8a8a84, top: 14, accel: 11, maxSpeed: 26, name: 'TRUCK' },
-  police: { color: 0x1a1a22, top: 24, accel: 22, maxSpeed: 48, name: 'POLICE' },
+const KINDS = {
+  sedan:  { w: 2.0, l: 4.4, h: 0.62, cabin: 0.55, top: 30, accel: 15, grip: 5.2 },
+  sport:  { w: 2.1, l: 4.5, h: 0.5,  cabin: 0.42, top: 40, accel: 23, grip: 6.0 },
+  wagon:  { w: 2.1, l: 4.9, h: 0.72, cabin: 0.66, top: 26, accel: 12, grip: 4.6 },
+  truck:  { w: 2.4, l: 5.8, h: 0.95, cabin: 0.8,  top: 22, accel: 10, grip: 4.0 },
+  cop:    { w: 2.1, l: 4.7, h: 0.6,  cabin: 0.55, top: 37, accel: 21, grip: 5.8 },
+  racer:  { w: 2.1, l: 4.5, h: 0.5,  cabin: 0.42, top: 41, accel: 24, grip: 6.1 },
 };
+export const CAR_COLORS = [0xc23b4e, 0x3b7dc2, 0x53c24a, 0xe0a52e, 0x8a5fd0, 0xd8d8de, 0x2ea8a0, 0xe06a2e, 0x707a8a];
 
-export function createCarMesh(type) {
-  const spec = CAR_TYPES[type] || CAR_TYPES.sedan;
-  const g = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color: spec.color });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.75, 4.6), bodyMat);
-  body.position.y = 0.65;
-  g.add(body);
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.7, 2.2),
-    new THREE.MeshLambertMaterial({ color: 0x1a2430 }));
-  cabin.position.set(0, 1.3, -0.3);
-  g.add(cabin);
-  const wheelMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
-  const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.35, 10);
+const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.3, 10);
+const wheelMat = new THREE.MeshStandardMaterial({ color: 0x14151c, roughness: 0.9 });
+const glassMat = new THREE.MeshStandardMaterial({ color: 0x18242e, roughness: 0.15, metalness: 0.7 });
+const lightMat = new THREE.MeshStandardMaterial({ color: 0xfff2c0, emissive: 0xffe9a0, emissiveIntensity: 1.6 });
+const tailMat = new THREE.MeshStandardMaterial({ color: 0xff3040, emissive: 0xd01828, emissiveIntensity: 1.2 });
+
+/** Build a car: returns the shared car record every system drives. */
+export function makeCar(kind, color, x, z, heading) {
+  const spec = KINDS[kind];
+  const group = new THREE.Group();
+  const paint = new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.2 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(spec.w, spec.h, spec.l), paint);
+  body.position.y = 0.42 + spec.h / 2; group.add(body);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(spec.w * 0.82, spec.cabin, spec.l * 0.48), glassMat);
+  cabin.position.set(0, 0.42 + spec.h + spec.cabin / 2 - 0.05, -spec.l * 0.04); group.add(cabin);
   const wheels = [];
-  for (const [wx, wz] of [[-1.05, 1.5], [1.05, 1.5], [-1.05, -1.5], [1.05, -1.5]]) {
+  for (const [wx, wz] of [[-spec.w / 2, spec.l * 0.32], [spec.w / 2, spec.l * 0.32], [-spec.w / 2, -spec.l * 0.32], [spec.w / 2, -spec.l * 0.32]]) {
     const w = new THREE.Mesh(wheelGeo, wheelMat);
-    w.rotation.z = Math.PI / 2;
-    w.position.set(wx, 0.42, wz);
-    g.add(w);
-    wheels.push(w);
+    w.rotation.z = Math.PI / 2; w.position.set(wx, 0.36, wz); group.add(w); wheels.push(w);
   }
-  if (type === 'police') {
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.22, 0.5),
-      new THREE.MeshBasicMaterial({ color: 0xff2020 }));
-    bar.position.set(0, 1.78, -0.3);
-    g.add(bar);
-    g.userData.lightBar = bar;
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.12, 0.3, 4.62),
-      new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    stripe.position.y = 0.95;
-    g.add(stripe);
+  for (const s of [-1, 1]) {
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.16, 0.08), lightMat);
+    hl.position.set(s * spec.w * 0.3, 0.72, spec.l / 2 + 0.02); group.add(hl);
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.14, 0.08), tailMat);
+    tl.position.set(s * spec.w * 0.3, 0.76, -spec.l / 2 - 0.02); group.add(tl);
   }
-  if (type === 'taxi') {
-    const sign = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.3, 0.5),
-      new THREE.MeshBasicMaterial({ color: 0xffe62a }));
-    sign.position.set(0, 1.8, -0.3);
-    g.add(sign);
+  let lightbar = null, lampR = null, lampB = null;
+  if (kind === 'cop') {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(spec.w + 0.04, 0.3, spec.l * 0.9),
+      new THREE.MeshStandardMaterial({ color: 0x2456c8, roughness: 0.4 }));
+    stripe.position.y = 0.78; group.add(stripe);
+    lightbar = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.16, 0.5),
+      new THREE.MeshStandardMaterial({ color: 0x222228, roughness: 0.5 }));
+    lightbar.position.set(0, 0.42 + spec.h + spec.cabin + 0.06, -spec.l * 0.04); group.add(lightbar);
+    lampR = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.18, 0.52),
+      new THREE.MeshStandardMaterial({ color: 0xff2020, emissive: 0xff2020, emissiveIntensity: 0 }));
+    lampR.position.set(-0.34, lightbar.position.y, lightbar.position.z); group.add(lampR);
+    lampB = lampR.clone();
+    lampB.material = new THREE.MeshStandardMaterial({ color: 0x2060ff, emissive: 0x2060ff, emissiveIntensity: 0 });
+    lampB.position.x = 0.34; group.add(lampB);
   }
-  // Nitro exhaust flame (v8 garage): hidden until the car's nitro fires.
-  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.34, 1.9, 8),
-    new THREE.MeshBasicMaterial({ color: 0x53c8ff, transparent: true, opacity: 0.85 }));
-  flame.rotation.x = -Math.PI / 2;
-  flame.position.set(0, 0.55, -3.2);
-  flame.visible = false;
-  g.add(flame);
-  g.userData.flame = flame;
-  g.userData.wheels = wheels;
-  g.userData.type = type;
-  return g;
-}
-
-export function makeCarState(mesh, x, z, heading, type) {
+  group.position.set(x, 0, z); group.rotation.y = heading;
   return {
-    mesh, type, x, z, heading,
-    speed: 0, steer: 0,
-    topSpeed: CAR_TYPES[type].top,
-    accel: CAR_TYPES[type].accel,
-    // Garage (v8) fits upgrades against these base figures.
-    baseTop: CAR_TYPES[type].top,
-    baseAccel: CAR_TYPES[type].accel,
-    armorLevel: 0, nitroLevel: 0, nitroOn: false,
-    name: CAR_TYPES[type].name,
-    parked: true, stolen: false,
+    kind, spec, group, wheels, lampR, lampB, color,
+    heading, speed: 0, throttle: 0, steerVis: 0,
+    health: 100, blownUntil: 0, driver: 'parked', dead: false,
+    // traffic/race route state
+    loop: null, wp: 0, cruise: spec.top * 0.45, stuckAt: 0,
   };
 }
 
-// Arcade drive step. `input` is {z: throttle -1..1, x: steer -1..1} in car space.
-export function driveCar(car, input, dt) {
-  const maxSteer = 0.55;
-  const targetSteer = input.x * maxSteer * Math.max(0.35, 1 - Math.abs(car.speed) / 60);
-  car.steer += (targetSteer - car.steer) * Math.min(1, dt * 8);
-  if (input.z > 0) car.speed += car.accel * input.z * dt;
-  else if (input.z < 0) {
-    if (car.speed > 0.5) car.speed -= 34 * dt; // brake
-    else car.speed -= car.accel * 0.6 * dt; // reverse
-  } else {
-    car.speed -= Math.sign(car.speed) * Math.min(Math.abs(car.speed), 8 * dt);
+/** One physics step. control = {throttle -1..1, steer -1..1, handbrake, nitro}. */
+export function stepCar(car, dt, control, G) {
+  const spec = car.spec;
+  const now = G.time;
+  const blown = now < car.blownUntil;
+  let top = spec.top * (blown ? 0.38 : 1);
+  let accel = spec.accel;
+  if (car.playerDriven) { // Tideworks upgrades ride with Nico
+    top *= 1 + G.upgrades.engine * 0.12;
+    accel *= 1 + G.upgrades.engine * 0.1;
   }
-  car.speed = Math.max(-car.topSpeed * 0.45, Math.min(car.topSpeed, car.speed));
-  if (Math.abs(car.speed) > 0.05) {
-    car.heading += car.steer * (car.speed / car.topSpeed) * dt * 1.9;
+  car.throttle = control.throttle;
+  const target = control.throttle > 0 ? top : control.throttle < 0 ? -top * 0.38 : 0;
+  const rate = control.throttle !== 0 ? accel : spec.accel * 1.4; // engine braking
+  car.speed += Math.sign(target - car.speed) * Math.min(Math.abs(target - car.speed), rate * dt * (control.throttle !== 0 ? Math.abs(control.throttle) : 1));
+  if (control.handbrake) car.speed -= Math.sign(car.speed) * Math.min(Math.abs(car.speed), 26 * dt);
+  const nitroOn = control.nitro && car.speed > 2 && (car.playerDriven ? G.upgrades.nitro > 0 : car.racerNitro);
+  if (nitroOn) car.speed += 15 * dt; // boost past the natural top for a moment
+  const steerPower = (control.handbrake ? 2.5 : 1.65) * Math.min(1, Math.abs(car.speed) / 9 + 0.25);
+  if (car.speed !== 0) car.heading -= control.steer * steerPower * dt * Math.sign(car.speed) * (control.handbrake ? 1 : Math.max(0.35, 1 - Math.abs(car.speed) / (top * 1.6)));
+  car.steerVis += ((control.steer * 0.5) - car.steerVis) * Math.min(1, dt * 8);
+  const pos = car.group.position;
+  const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
+  // drift: velocity keeps a lateral component that grip bleeds away
+  if (!car.vel) car.vel = { x: 0, z: 0 };
+  const grip = control.handbrake ? 1.6 : spec.grip;
+  car.vel.x += (fx * car.speed - car.vel.x) * Math.min(1, grip * dt);
+  car.vel.z += (fz * car.speed - car.vel.z) * Math.min(1, grip * dt);
+  pos.x += car.vel.x * dt; pos.z += car.vel.z * dt;
+  const before = { x: pos.x, z: pos.z };
+  G.city.collide(pos, 1.5);
+  if (Math.abs(pos.x - before.x) > 0.01 || Math.abs(pos.z - before.z) > 0.01) {
+    if (Math.abs(car.speed) > 9 && now > (car.lastCrashAt || 0) + 0.4) {
+      car.lastCrashAt = now; car.health -= 6;
+      G.audio?.crash(); G.onCarCrash?.(car);
+    }
+    car.speed *= 0.45; car.vel.x *= 0.4; car.vel.z *= 0.4;
   }
-  car.x += Math.sin(car.heading) * car.speed * dt;
-  car.z += Math.cos(car.heading) * car.speed * dt;
-  car.mesh.position.set(car.x, 0, car.z);
-  car.mesh.rotation.y = car.heading;
-  // Nitro flame flickers while the boost is firing.
-  const flame = car.mesh.userData.flame;
-  if (flame) {
-    flame.visible = !!car.nitroOn && car.speed > 4;
-    if (flame.visible) flame.scale.set(1, 0.8 + Math.random() * 0.5, 1);
+  car.group.rotation.y = car.heading;
+  const spin = car.speed * dt / 0.36;
+  for (const w of car.wheels) w.rotation.x += spin;
+  if (car.wheels[0]) { car.wheels[0].rotation.y = car.steerVis; car.wheels[1].rotation.y = car.steerVis; }
+  // flashing lightbar
+  if (car.lampR) {
+    const phase = Math.sin(now * 11) > 0;
+    car.lampR.material.emissiveIntensity = phase ? 3.2 : 0.1;
+    car.lampB.material.emissiveIntensity = phase ? 0.1 : 3.2;
   }
-  const spin = car.speed * dt / 0.42;
-  for (const w of car.mesh.userData.wheels) w.rotation.x += spin;
-  const frontL = car.mesh.userData.wheels[0], frontR = car.mesh.userData.wheels[1];
-  frontL.rotation.y = car.steer * 0.5;
-  frontR.rotation.y = car.steer * 0.5;
-  return Math.abs(car.speed);
+  return car;
 }
 
-export function spawnParkedCars(scene, colliders = [], rngSeed = 777) {
-  const rng = mulberry32(rngSeed);
-  const cars = [];
-  const types = ['sedan', 'sedan', 'sport', 'taxi', 'sedan', 'sport', 'truck', 'sedan'];
-  // Park in the road lane at the kerb (offset 3.4 from the road centre), then
-  // shift along the road until the spot is clear of building colliders.
-  const spots = [];
-  for (let i = 0; i < 26; i++) {
-    const road = -240 + Math.floor(rng() * 9) * 60;
-    const along = -240 + rng() * 480;
-    const side = rng() < 0.5 ? -1 : 1;
-    if (rng() < 0.5) spots.push({ x: road + side * 3.4, z: along, h: rng() < 0.5 ? 0 : Math.PI, alongRoad: 'z' });
-    else spots.push({ x: along, z: road + side * 3.4, h: rng() < 0.5 ? Math.PI / 2 : -Math.PI / 2, alongRoad: 'x' });
-  }
-  function overlaps(x, z) {
-    for (const c of colliders) {
-      if (x > c.minX - 3.5 && x < c.maxX + 3.5 && z > c.minZ - 3.5 && z < c.maxZ + 3.5) return true;
-    }
-    return false;
-  }
-  spots.forEach((s, i) => {
-    let tries = 0;
-    while (overlaps(s.x, s.z) && tries < 10) {
-      const shift = (tries + 1) * 14 * (tries % 2 === 0 ? 1 : -1);
-      if (s.alongRoad === 'z') s.z += shift; else s.x += shift;
-      tries++;
-    }
-    if (overlaps(s.x, s.z)) return; // no clear spot on this road: skip the car
-    const type = types[i % types.length];
-    const mesh = createCarMesh(type);
-    scene.add(mesh);
-    const car = makeCarState(mesh, s.x, s.z, s.h, type);
-    car.parked = true;
-    mesh.position.set(s.x, 0, s.z);
-    mesh.rotation.y = s.h;
-    cars.push(car);
-  });
-  return cars;
-}
-
-export function nearestParkedCar(cars, x, z, maxDist = 5) {
-  let best = null, bd = maxDist;
-  for (const c of cars) {
-    if (!c.parked) continue;
-    const d = Math.hypot(c.x - x, c.z - z);
-    if (d < bd) { bd = d; best = c; }
-  }
-  return best;
+/** Simple "drive toward a point" steering for AI drivers. */
+export function steerToward(car, tx, tz, dt, G, opts = {}) {
+  const pos = car.group.position;
+  const dx = tx - pos.x, dz = tz - pos.z;
+  const dist = Math.hypot(dx, dz);
+  const targetHeading = Math.atan2(dx, dz);
+  let diff = targetHeading - car.heading;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  const steer = Math.max(-1, Math.min(1, -diff * 1.9)); // stepCar turns heading down for +steer
+  const cruise = opts.cruise ?? car.spec.top * 0.7;
+  let throttle = dist > 4 ? 1 : 0.2;
+  if (Math.abs(diff) > 2.2) throttle = -0.6; // badly angled: back up and retry
+  if (opts.stopAt && dist < opts.stopAt) throttle = car.speed > 1 ? -0.5 : 0;
+  stepCar(car, dt, { throttle: throttle * (cruise / car.spec.top), steer, handbrake: false }, G);
+  return dist;
 }
