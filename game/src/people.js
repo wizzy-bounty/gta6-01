@@ -1,117 +1,130 @@
-// MARISOL BAY — people: low-poly articulated figures (player, crew,
-// pedestrians) built from boxes with swinging limbs and walk bob.
+// people.js — the people of MARISOL BAY, built from boxes at honest human
+// proportions: legs, torso, arms and a head with hair, about 1.78 units
+// tall in total. R16's stretched column is not welcome here: every part is
+// sized off one skeleton so a person always reads as a person, near or far.
+
 import * as THREE from 'three';
-import { WORLD } from './config.js';
 
-const SKIN_TONES = [0xc68863, 0x8a5a3b, 0xd9a066, 0x6e4526, 0xe8b98d];
-const SHIRTS = [0xd84f35, 0x2e7f86, 0xe8b93c, 0x7a4fa3, 0x3fae6a, 0xe2703a, 0x9fd8e0, 0xf2f3f0, 0xb3392f];
-const PANTS = [0x2b3442, 0x51606e, 0x3a2e22, 0x22262b, 0x74563a];
+const mat = (color, rough = 0.85) => new THREE.MeshStandardMaterial({ color, roughness: rough });
 
-function limb(w, h, d, mat, x, y, z, parent) {
-  const pivot = new THREE.Group();
-  pivot.position.set(x, y, z);
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-  m.position.y = -h / 2;
+function part(w, h, d, material, x, y, z) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+  m.position.set(x, y, z);
   m.castShadow = true;
-  pivot.add(m);
-  parent.add(pivot);
-  return pivot;
+  return m;
 }
 
-export function buildPerson({ skin, hair, shirt, pants }) {
+// Skeleton heights (units): legs 0.78, torso 0.62, head 0.30, hair 0.08.
+export function buildPerson(spec) {
   const g = new THREE.Group();
-  const skinM = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.7 });
-  const hairM = new THREE.MeshStandardMaterial({ color: hair, roughness: 0.9 });
-  const shirtM = new THREE.MeshStandardMaterial({ color: shirt, roughness: 0.8 });
-  const pantsM = new THREE.MeshStandardMaterial({ color: pants, roughness: 0.85 });
+  const build = spec.build ?? 1;
+  const skin = mat(spec.skin);
+  const shirt = mat(spec.shirt);
+  const pants = mat(spec.pants);
+  const hairM = mat(spec.hair, 0.95);
 
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.62, 0.3), shirtM);
-  torso.position.y = 1.08; torso.castShadow = true; g.add(torso);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.34, 0.3), skinM);
-  head.position.y = 1.58; head.castShadow = true; g.add(head);
-  const hairTop = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.1, 0.32), hairM);
-  hairTop.position.y = 1.78; g.add(hairTop);
-  const hairBack = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.08), hairM);
-  hairBack.position.set(0, 1.66, 0.13); g.add(hairBack);
+  const legL = new THREE.Group();
+  const legR = new THREE.Group();
+  legL.position.set(-0.11 * build, 0.78, 0);
+  legR.position.set(0.11 * build, 0.78, 0);
+  legL.add(part(0.17 * build, 0.78, 0.19, pants, 0, -0.39, 0));
+  legR.add(part(0.17 * build, 0.78, 0.19, pants, 0, -0.39, 0));
+  // shoes
+  legL.add(part(0.18 * build, 0.09, 0.3, mat(0x1a1a1e), 0, -0.74, 0.05));
+  legR.add(part(0.18 * build, 0.09, 0.3, mat(0x1a1a1e), 0, -0.74, 0.05));
 
-  const armL = limb(0.13, 0.58, 0.13, shirtM, -0.33, 1.34, 0, g);
-  const armR = limb(0.13, 0.58, 0.13, shirtM, 0.33, 1.34, 0, g);
-  const legL = limb(0.16, 0.72, 0.16, pantsM, -0.14, 0.76, 0, g);
-  const legR = limb(0.16, 0.72, 0.16, pantsM, 0.14, 0.76, 0, g);
-  g.userData.limbs = { armL, armR, legL, legR };
-  g.userData.head = head;
-  return g;
+  const torso = part(0.54 * build, 0.62, 0.3, shirt, 0, 1.09, 0);
+
+  const armL = new THREE.Group();
+  const armR = new THREE.Group();
+  armL.position.set(-0.34 * build, 1.36, 0);
+  armR.position.set(0.34 * build, 1.36, 0);
+  armL.add(part(0.13, 0.58, 0.15, shirt, 0, -0.26, 0));
+  armR.add(part(0.13, 0.58, 0.15, shirt, 0, -0.26, 0));
+  armL.add(part(0.12, 0.14, 0.14, skin, 0, -0.58, 0));
+  armR.add(part(0.12, 0.14, 0.14, skin, 0, -0.58, 0));
+
+  const headG = new THREE.Group();
+  headG.position.y = 1.4;
+  headG.add(part(0.3, 0.32, 0.3, skin, 0, 0.16, 0));
+  if (spec.style === 'bun') {
+    headG.add(part(0.32, 0.12, 0.32, hairM, 0, 0.36, 0));
+    headG.add(part(0.16, 0.14, 0.16, hairM, 0, 0.44, -0.1));
+  } else if (spec.style === 'cap') {
+    headG.add(part(0.33, 0.1, 0.33, mat(0xd23c2a), 0, 0.34, 0));
+    headG.add(part(0.3, 0.05, 0.22, mat(0xd23c2a), 0, 0.3, 0.24));
+  } else if (spec.style === 'bob') {
+    headG.add(part(0.34, 0.34, 0.34, hairM, 0, 0.2, -0.03));
+    headG.add(part(0.3, 0.3, 0.1, skin, 0, 0.14, 0.13)); // face plate in front of the bob
+  } else if (spec.style === 'beard') {
+    headG.add(part(0.32, 0.1, 0.32, hairM, 0, 0.35, 0));
+    headG.add(part(0.28, 0.18, 0.08, hairM, 0, 0.02, 0.14)); // beard
+  } else {
+    headG.add(part(0.32, 0.11, 0.32, hairM, 0, 0.35, 0)); // short crop
+  }
+
+  g.add(legL, legR, torso, armL, armR, headG);
+  return { group: g, legL, legR, armL, armR, headG, height: 1.78 };
 }
 
-export function animatePerson(g, t, speed) {
-  const L = g.userData.limbs;
-  if (!L) return;
-  const swing = Math.min(1, speed / 4) * 0.65;
-  const ph = t * (4 + speed * 1.6);
-  L.legL.rotation.x = Math.sin(ph) * swing;
-  L.legR.rotation.x = -Math.sin(ph) * swing;
-  L.armL.rotation.x = -Math.sin(ph) * swing * 0.8;
-  L.armR.rotation.x = Math.sin(ph) * swing * 0.8;
-  g.position.y = Math.abs(Math.sin(ph)) * 0.05 * Math.min(1, speed / 3);
-}
-
-// Pedestrian: strolls a sidewalk line, panics (runs sideways) from fast cars.
-export class Pedestrian {
-  constructor(rng, scene) {
-    const style = {
-      skin: rng.pick(SKIN_TONES), hair: rng.pick([0x14100c, 0x2a1c12, 0x4a3018, 0x777777, 0x20142a]),
-      shirt: rng.pick(SHIRTS), pants: rng.pick(PANTS),
-    };
-    this.group = buildPerson(style);
-    this.rng = rng;
-    this.speed = rng.range(1.1, 1.9);
-    this.panic = 0;
-    this.reset();
-    scene.add(this.group);
-  }
-  reset() {
-    const rng = this.rng;
-    this.axis = rng.chance(0.5) ? 'x' : 'z';
-    this.dir = rng.chance(0.5) ? 1 : -1;
-    if (this.axis === 'z') {
-      this.fixed = rng.pick(WORLD.avenuesX) + rng.pick([-9.6, 9.6]);
-      this.along = rng.range(-245, 245);
-    } else {
-      this.fixed = rng.pick(WORLD.streetsZ) + rng.pick([-9.6, 9.6]);
-      this.along = rng.range(-245, 245);
-    }
-    this.sync(0);
-  }
-  sync() {
-    if (this.axis === 'z') {
-      this.group.position.set(this.fixed, 0, this.along);
-      this.group.rotation.y = this.dir > 0 ? Math.PI : 0;
-    } else {
-      this.group.position.set(this.along, 0, this.fixed);
-      this.group.rotation.y = this.dir > 0 ? -Math.PI / 2 : Math.PI / 2;
-    }
-  }
-  update(dt, t, threats) {
-    let sp = this.speed;
-    // panic: a fast, close car makes them sprint perpendicular-ish
-    this.panic = Math.max(0, this.panic - dt);
-    for (const th of threats) {
-      const dx = this.group.position.x - th.x, dz = this.group.position.z - th.z;
-      const d2 = dx * dx + dz * dz;
-      if (d2 < 90 && th.speed > 8) { this.panic = 1.4; this.fleeX = dx; this.fleeZ = dz; }
-    }
-    if (this.panic > 0) {
-      sp = 4.6;
-      const len = Math.hypot(this.fleeX || 0, this.fleeZ || 0) || 1;
-      this.group.position.x += (this.fleeX / len) * sp * dt;
-      this.group.position.z += (this.fleeZ / len) * sp * dt;
-      this.group.rotation.y = Math.atan2(this.fleeX / len, this.fleeZ / len);
-      animatePerson(this.group, t, sp);
-      return;
-    }
-    this.along += this.dir * sp * dt;
-    if (this.along > 250 || this.along < -250) { this.dir *= -1; }
+export class Person {
+  constructor(spec, x, z, heading = 0) {
+    const built = buildPerson(spec);
+    this.body = built;
+    this.mesh = built.group;
+    this.spec = spec;
+    this.x = x;
+    this.z = z;
+    this.heading = heading;
+    this.walkPhase = Math.random() * Math.PI * 2;
+    this.walkSpeed = 0; // set while moving, drives the limb swing
     this.sync();
-    animatePerson(this.group, t, sp);
+  }
+
+  place(x, z, heading) {
+    this.x = x;
+    this.z = z;
+    this.heading = heading;
+    this.sync();
+  }
+
+  /** walk toward a point at speed units/s; returns distance remaining */
+  walkToward(dt, tx, tz, speed = 2.2) {
+    const dx = tx - this.x, dz = tz - this.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.05) {
+      this.walkSpeed = 0;
+      return 0;
+    }
+    const targetHeading = Math.atan2(dx, dz);
+    let d = targetHeading - this.heading;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    this.heading += d * Math.min(1, dt * 8);
+    const step = Math.min(dist, speed * dt);
+    this.x += Math.sin(this.heading) * step;
+    this.z += Math.cos(this.heading) * step;
+    this.walkSpeed = speed;
+    this.walkPhase += dt * speed * 3.4;
+    this.sync();
+    return dist - step;
+  }
+
+  idle(dt, faceHeading = null) {
+    this.walkSpeed = 0;
+    if (faceHeading !== null) this.heading = faceHeading;
+    this.walkPhase += dt * 0.6;
+    this.sync(true);
+  }
+
+  sync(idleSway = false) {
+    const b = this.body;
+    const swing = idleSway ? Math.sin(this.walkPhase) * 0.04 : Math.sin(this.walkPhase) * 0.55;
+    b.legL.rotation.x = swing;
+    b.legR.rotation.x = -swing;
+    b.armL.rotation.x = -swing * 0.8;
+    b.armR.rotation.x = swing * 0.8;
+    this.mesh.position.set(this.x, idleSway ? Math.abs(Math.sin(this.walkPhase)) * 0.012 : 0, this.z);
+    this.mesh.rotation.y = this.heading;
   }
 }

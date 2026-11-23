@@ -1,92 +1,144 @@
-// MARISOL BAY — the job: a 3-stage mission state machine.
-// 1 LIFT THE GT → 2 LOSE THE HEAT → 3 MAKE THE PIER → DONE.
-import { PLACES } from './config.js';
+// missions.js — THE JOB: a three-stage run across Marisol Bay.
+//
+//   1. LIFT THE GT   — take the Vantara GT from the Azure Pearl porte-cochère.
+//   2. LOSE THE HEAT — wanted climbs; break line of sight until it cools.
+//   3. MAKE THE PIER — deliver the car to Gus at Pier 9 against the clock.
+//
+// Vera plans it, Mako frets over the car, Ivy watches the sky, Gus pays.
+// Progress (cash, respect, finished stages) persists in localStorage.
+
+import { WORLD, SAVE_KEY } from './config.js';
 
 export const STAGES = [
-  { key: 'lift',    title: 'LIFT THE GT',    objective: 'Steal the Vantara GT from the Azure Pearl porte-cochère', next: 'Get in the GT — driver’s side' },
-  { key: 'heat',    title: 'LOSE THE HEAT',  objective: 'Break the MBPD line of sight and let the stars cool',     next: 'Stay out of sight — no unit within 26 m' },
-  { key: 'pier',    title: 'MAKE THE PIER',  objective: 'Deliver the Vantara GT to Gus at Pier 9, Harborfront',    next: 'Reach the beacon at Pier 9' },
-  { key: 'done',    title: 'JOB DONE',       objective: 'The GT is on the boat. The crew gets paid.',               next: 'Free roam — Marisol Bay is yours' },
+  {
+    id: 'lift',
+    title: 'LIFT THE GT',
+    objective: 'Steal the Vantara GT from the Azure Pearl porte-cochère',
+    next: 'Get in the GT — driver’s side',
+    point: { x: WORLD.azurePearl.x - 8, z: WORLD.azurePearl.z },
+    radius: 9,
+  },
+  {
+    id: 'heat',
+    title: 'LOSE THE HEAT',
+    objective: 'Break the MBPD line of sight and let the stars cool',
+    next: 'Stay out of sight — no unit within 26 m',
+    point: null,
+    radius: 0,
+  },
+  {
+    id: 'pier',
+    title: 'MAKE THE PIER',
+    objective: 'Deliver the Vantara GT to Gus at Pier 9, Harborfront',
+    next: 'Reach the beacon at Pier 9',
+    point: { x: WORLD.pier.x, z: 214 },
+    radius: 8,
+  },
 ];
 
-const DIALOG = {
-  start:   { who: 'vera', line: 'GT is under the Azure Pearl canopy, keys in it. Walk in calm, drive out loud.' },
-  lift:    { who: 'ivy',  line: 'Plates just pinged a camera. Half the MBPD is rolling — move, Dax!' },
-  spotted: { who: 'mako', line: 'They’re at ramming distance! Shake them before my paint job is confetti!' },
-  cooling: { who: 'vera', line: 'Line of sight broken. Stay dark, stay slow — let the stars bleed off.' },
-  pier:    { who: 'gus',  line: 'Boat’s loaded and impatient, kid. Pier 9, berth four — bring me that GT.' },
-  done:    { who: 'vera', line: 'Payment cleared. Drinks at Casa Azul — you earned the sunset, wheelman.' },
-  crash:   { who: 'mako', line: 'I felt that from here! That GT is a classic, not a bumper car!' },
+export const DIALOG = {
+  intro: { who: 'vera', line: 'That’s her — Vantara GT, keys in, tank full. Walk up calm, Dax. We drive out loud.' },
+  lift: { who: 'mako', line: 'She’s warm and she’s loud. Whatever happens next — bring my car back in one piece.' },
+  heat: { who: 'ivy', line: 'Air-1 has you lit and two units are at your bumper — cut through the palm row, Dax!' },
+  cooling: { who: 'vera', line: 'They’re losing the picture. Easy now — no noise, no witnesses, let it die.' },
+  pier: { who: 'gus', line: 'Berth four, lights on. Bring her down the pier slow — the boat crew is watching.' },
+  done: { who: 'vera', line: 'Paid and clean. That’s how Marisol Bay works — same time next week, wheelman.' },
+  busted: { who: 'ivy', line: 'They’ve got the street boxed. Hands where they can see them, Dax…' },
 };
 
 export class Mission {
   constructor() {
-    this.stage = 0;               // index into STAGES
-    this.timer = 0;               // stage 3 countdown
-    this.cool = 0;                // stage 2 out-of-sight accumulation
-    this.started = false;
-    this.done = false;
-    this.events = [];
-    this.saidSpotted = false;
+    this.stage = 0; // index into STAGES; STAGES.length = complete
+    this.cash = 18450;
+    this.respect = 320;
+    this.respectMax = 550;
+    this.respectTitle = 'WHEELMAN';
+    this.timer = 0; // counts up within a stage
+    this.stageTime = 0; // countdown where a stage has one
+    this.heatCool = 0; // stage-2 out-of-sight accumulation
+    this.failed = false;
+    this.load();
   }
-  say(key) { this.events.push({ type: 'dialog', ...DIALOG[key] }); }
-  feed(text) { this.events.push({ type: 'feed', text }); }
-  begin() {
-    if (this.started) return;
-    this.started = true;
-    this.say('start');
-    this.feed('JOB STARTED — LIFT THE VANTARA GT');
-  }
-  drainEvents() { const e = this.events; this.events = []; return e; }
 
-  // ctx: { playerPos, drivingHero, wanted, setWanted(n), nearestPolice }
-  update(dt, ctx) {
-    if (!this.started || this.done) return;
+  get current() {
+    return this.stage < STAGES.length ? STAGES[this.stage] : null;
+  }
+
+  get complete() {
+    return this.stage >= STAGES.length;
+  }
+
+  /** objective marker for the minimap + world beacon */
+  get target() {
+    const s = this.current;
+    return s && s.point ? s.point : null;
+  }
+
+  startStageClock() {
+    this.timer = 0;
+    this.stageTime = this.stage === 2 ? 96 : 0; // pier run is against 1:36
+  }
+
+  advance() {
     if (this.stage === 0) {
-      const d = Math.hypot(ctx.playerPos.x - PLACES.gtSpot.x, ctx.playerPos.z - PLACES.gtSpot.z);
-      if (ctx.drivingHero) {
-        this.stage = 1;
-        ctx.setWanted(3);
-        this.say('lift');
-        this.feed('WANTED LEVEL 3 — MBPD RESPONDING');
-      } else if (d < 30 && !this._nearSaid) { this._nearSaid = true; }
+      this.respect += 40;
     } else if (this.stage === 1) {
-      if (ctx.nearestPolice < 15 && !this.saidSpotted) { this.saidSpotted = true; this.say('spotted'); }
-      if (ctx.nearestPolice > 26) {
-        this.cool += dt;
-        if (this.cool > 2 && !this._coolSaid) { this._coolSaid = true; this.say('cooling'); }
-        if (this.cool >= 9) {
-          this.stage = 2;
-          this.timer = 150;
-          ctx.setWanted(1);
-          this.say('pier');
-          this.feed('HEAT LOST — DELIVER THE GT TO PIER 9');
-        }
-      } else {
-        this.cool = Math.max(0, this.cool - dt * 2);
-      }
+      this.respect += 60;
     } else if (this.stage === 2) {
-      this.timer -= dt;
-      if (this.timer <= 0) { // out of time: heat returns, timer resets
-        this.timer = 150;
-        ctx.setWanted(3);
-        this.feed('THE BOAT WAITED — HEAT IS BACK, MOVE!');
-      }
-      const d = Math.hypot(ctx.playerPos.x - PLACES.pier.x, ctx.playerPos.z - PLACES.pier.z);
-      if (ctx.drivingHero && d < 12) {
-        this.stage = 3;
-        this.done = true;
-        ctx.setWanted(0);
-        this.say('done');
-        this.feed('DELIVERED — +$18,450 · RESPECT +120');
-      }
+      this.cash += 12500;
+      this.respect += 130;
+      if (this.respect >= this.respectMax) this.respectTitle = 'SHOT CALLER';
     }
+    this.stage += 1;
+    this.heatCool = 0;
+    this.startStageClock();
+    this.save();
   }
 
-  beaconTarget() {
-    if (this.stage === 0) return PLACES.gtSpot;
-    if (this.stage === 2) return PLACES.pier;
-    return null;
+  fail() {
+    this.failed = true;
+    this.cash = Math.max(0, this.cash - 2500);
+    this.save();
   }
-  current() { return STAGES[Math.min(this.stage, STAGES.length - 1)]; }
+
+  resetRun() {
+    this.stage = 0;
+    this.failed = false;
+    this.heatCool = 0;
+    this.startStageClock();
+    this.save();
+  }
+
+  save() {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        cash: this.cash, respect: this.respect, respectTitle: this.respectTitle,
+        stage: Math.min(this.stage, STAGES.length),
+      }));
+    } catch { /* private mode — the run just doesn't persist */ }
+  }
+
+  load() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (typeof s.cash === 'number') this.cash = s.cash;
+      if (typeof s.respect === 'number') this.respect = s.respect;
+      if (typeof s.respectTitle === 'string') this.respectTitle = s.respectTitle;
+    } catch { /* corrupted save — start clean */ }
+  }
+}
+
+/** mm:ss for the mission card timer */
+export function formatClock(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** 18:45-style game clock from elapsed play seconds */
+export function gameClock(elapsed) {
+  const base = 17 * 60 + 42; // the job starts at 17:42
+  const t = (base + Math.floor(elapsed / 2)) % (24 * 60);
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
 }

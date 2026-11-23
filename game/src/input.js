@@ -1,34 +1,40 @@
-// MARISOL BAY — keyboard input state.
-export const keys = Object.create(null);
+// input.js — keyboard state for MARISOL BAY. One shared key map, edge
+// detection for the interact key, and a hook that unlocks audio on the
+// first real gesture.
 
-export function initInput() {
-  addEventListener('keydown', (e) => {
-    keys[e.code] = true;
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
-  });
-  addEventListener('keyup', (e) => { keys[e.code] = false; });
-  addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+export class Input {
+  constructor(onFirstGesture) {
+    this.down = new Set();
+    this.pressed = new Set();
+    let gestured = false;
+    const gesture = () => {
+      if (!gestured) {
+        gestured = true;
+        onFirstGesture?.();
+      }
+    };
+    window.addEventListener('keydown', (e) => {
+      gesture();
+      const k = e.key.toLowerCase();
+      if (!this.down.has(k)) this.pressed.add(k);
+      this.down.add(k);
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
+    });
+    window.addEventListener('keyup', (e) => this.down.delete(e.key.toLowerCase()));
+    window.addEventListener('pointerdown', gesture);
+    window.addEventListener('blur', () => this.down.clear());
+  }
+
+  /** end-of-frame housekeeping: edge presses last exactly one frame */
+  postUpdate() {
+    this.pressed.clear();
+  }
+
+  get forward() { return this.down.has('w') || this.down.has('arrowup'); }
+  get back() { return this.down.has('s') || this.down.has('arrowdown'); }
+  get left() { return this.down.has('a') || this.down.has('arrowleft'); }
+  get right() { return this.down.has('d') || this.down.has('arrowright'); }
+  get nitro() { return this.down.has('shift'); }
+  get handbrake() { return this.down.has(' '); }
+  get interact() { return this.pressed.has('e'); }
 }
-
-export const input = {
-  get throttle() { return (keys.KeyW || keys.ArrowUp) ? 1 : 0; },
-  get brake() { return (keys.KeyS || keys.ArrowDown) ? 1 : 0; },
-  get steer() {
-    let s = 0;
-    if (keys.KeyA || keys.ArrowLeft) s -= 1;
-    if (keys.KeyD || keys.ArrowRight) s += 1;
-    return s;
-  },
-  get handbrake() { return !!keys.Space; },
-  get nitro() { return !!(keys.ShiftLeft || keys.ShiftRight); },
-  get enter() { return !!keys.KeyE; },
-  moveAxis() {
-    let x = 0, z = 0;
-    if (keys.KeyW || keys.ArrowUp) z -= 1;
-    if (keys.KeyS || keys.ArrowDown) z += 1;
-    if (keys.KeyA || keys.ArrowLeft) x -= 1;
-    if (keys.KeyD || keys.ArrowRight) x += 1;
-    const len = Math.hypot(x, z) || 1;
-    return { x: x / len, z: z / len, active: x !== 0 || z !== 0 };
-  },
-};

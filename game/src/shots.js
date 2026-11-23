@@ -1,117 +1,132 @@
-// MARISOL BAY — seeded screenshot states. Each shot poses the whole game
-// mid-action (never at spawn): low chase camera, police at ramming
-// distance inside the frame, helicopter overhead, HUD fully populated.
-// applyShot(n, G) mutates the live game context G built by main.js.
-import { PLACES } from './config.js';
+// shots.js — the four hero frames of MARISOL BAY, seeded mid-action.
+//
+// The dossier's screenshots are rendered by loading the game with
+// ?shot=<name>: each setup poses the city at a frozen moment of the job —
+// cars placed by hand, cruisers at ramming distance, the helicopter's
+// spotlight pinned, the HUD fully populated. These are compositions, not
+// spawn points: if a frame reads empty or calm, the seed is wrong.
 
-export const SHOT_META = [
-  { file: '1-beach-chase.jpg',    name: 'Golden-hour Strand chase' },
-  { file: '2-downtown-mission.jpg', name: 'Dusk Casino Row escape' },
-  { file: '3-day-foot.jpg',       name: 'Daytime on-foot at the Azure Pearl' },
-  { file: '4-night-harbor.jpg',   name: 'Night delivery at Pier 9' },
-];
+import { DIALOG } from './missions.js';
 
-function poseCruiser(G, i, x, z, heading) {
-  const c = G.cruisers[i];
-  if (!c) return;
-  c.body.place(x, z, heading);
-  c.body.speed = 26;
-  c.active = true; c.group.visible = true;
-  c.tag = 'RAMMING'; c.dist = 9;
+export const SHOT_NAMES = ['beach', 'downtown', 'day', 'harbor'];
+
+const CREW_LINES = {
+  beach: { vera: 'CALLING THE PLAY', mako: 'RIDING SHOTGUN · RADIO', gus: 'WAITING AT PIER 9', ivy: 'EYES ON AIR-1' },
+  downtown: { vera: 'CALLING THE PLAY', mako: 'WATCHING THE ROW', gus: 'WAITING AT PIER 9', ivy: 'COUNTING UNITS' },
+  day: { vera: 'AT THE AZURE PEARL', mako: 'GT PREPPED · KEYS IN', gus: 'WAITING AT PIER 9', ivy: 'STREET IS QUIET' },
+  harbor: { vera: 'COUNTING THE MONEY', mako: 'ON THE RADIO', gus: 'AT PIER 9 · LIGHTS ON', ivy: 'PATROL NEARBY' },
+};
+
+function crewStatus(hud, name) {
+  for (const [id, text] of Object.entries(CREW_LINES[name])) hud.setCrewStatus(id, text);
 }
-function feedAll(G, lines) { for (const l of lines) G.hud.pushFeed(l); }
 
-export function applyShot(n, G) {
-  const { world, hud, mission } = G;
-  hud.clearFeed();
-  mission.started = true;
-  G.poseMode = true;
-  G.cash = 18450; G.respect = 320; G.jobTime = 204;
-  hud.setCrewStatus('vera', 'CALLING THE PLAY');
-  hud.setCrewStatus('mako', 'RIDING SHOTGUN · RADIO');
-  hud.setCrewStatus('gus', 'WAITING AT PIER 9');
-  hud.setCrewStatus('ivy', 'EYES ON AIR-1');
-
-  if (n === 1) {
-    // GOLDEN HOUR — Strand boulevard chase, heli overhead, cruisers flanking.
-    world.setPhase('golden');
-    mission.stage = 1;
-    G.setWanted(4, true);
-    G.enterCar(G.hero, true);
-    G.hero.body.place(-213.4, 66, 0);           // northbound lane, palms + beach
-    G.hero.body.speed = 31;
-    poseCruiser(G, 0, -208.4, 56, 0.12);        // right-front flank, ramming distance
-    poseCruiser(G, 1, -217.6, 70, -0.1);        // left rear quarter, in frame edge
-    poseCruiser(G, 2, -213, 32, 0);             // ahead, closing
-    G.cruisers[2].tag = 'CLOSING IN';
-    G.heli.active = true; G.heli.group.visible = true; G.heli.setLit(true);
-    G.heli.group.position.set(-204, 13, 46);    // low + ahead so it reads in-frame
-    G.heli.poolGlow.position.y = -12.4;
-    G.moveCrew('ivy', -203, 58, 2.4);
-    G.scatterPedsNear(-210, 62, 26);
-    hud.setDialog('ivy', 'Air-1 has you lit and two units are at your bumper — cut through the palm row, Dax!', G.now);
-    feedAll(G, ['AIR SUPPORT OVERHEAD', 'WANTED LEVEL 4 — MBPD RESPONDING', 'CRASH — WITNESSES CALLED IT IN', 'JOB — LOSE THE HEAT']);
-    G.snapCamera();
+/** ctx: everything main.js owns — see main.js makeShotContext(). */
+export function applyShot(ctx, name) {
+  const { hero, police, dax, vera, ivy, traffic, hud } = ctx;
+  crewStatus(hud, name);
+  switch (name) {
+    case 'beach': {
+      ctx.setMood('golden');
+      hero.place(-118, -4, Math.PI + 0.22, 24); // angled: rear three-quarter, not a flat box
+      hero.braking = true;
+      police.setWanted(4);
+      police.deploy(0, -113.9, -13.5, Math.PI - 0.08); // right flank, ramming distance
+      police.deploy(1, -122.6, -3.0, Math.PI + 0.12); // rear-left, inside the frame
+      police.deploy(2, -122.2, -19, Math.PI + 0.05); // second row, left lane
+      police.heliAngle = -2.31; // Air-1 ahead-left, its cone raking the road in frame
+      traffic[0]?.place(-121.5, -44, Math.PI, 10); // civilian ahead in lane
+      ivy.place(-108.6, -16, -Math.PI / 2);
+      ctx.cam(-120.6, 2.6, 5.8, -117.4, 1.1, -24);
+      ctx.scriptedSpeedKmh = 111;
+      ctx.stageIdx = 1;
+      ctx.dialogSpec = ['ivy', DIALOG.heat.line];
+      ctx.feedLines = [
+        ['CRASH — WITNESSES CALLED IT IN', true],
+        ['WANTED LEVEL 4 — MBPD RESPONDING', true],
+        ['AIR SUPPORT OVERHEAD', false],
+      ];
+      ctx.zone = 'THE STRAND';
+      break;
+    }
+    case 'downtown': {
+      ctx.setMood('dusk');
+      hero.place(4, 5.2, Math.PI / 2, 22);
+      hero.braking = false;
+      hero.setHeadlights(true, 0.55);
+      police.setWanted(3);
+      police.deploy(0, 8, 12.4, Math.PI / 2); // parallel in the south lane, alongside
+      police.deploy(1, 26, 1.0, Math.PI / 2 - 0.05); // ahead-right, closing
+      police.deploy(2, 62, 6.5, Math.PI / 2); // far ahead in lane
+      police.deploy(3, 16, 12.8, Math.PI / 2 + 0.05); // second parallel unit
+      police.deploy(4, 52, 0.5, Math.PI / 2); // ahead in the north lane
+      police.units[0].car.setHeadlights(true, 0.45);
+      police.units[1].car.setHeadlights(true, 0.45);
+      police.units[3].car.setHeadlights(true, 0.45);
+      traffic[0]?.place(44, 12.6, -Math.PI / 2, 9); // oncoming taxi, near miss
+      traffic[0]?.setHeadlights(true, 0.7);
+      traffic[1]?.place(-30, 0.5, Math.PI / 2, 8);
+      traffic[1]?.setHeadlights(true, 0.5);
+      ctx.cam(-8.6, 2.35, 9.2, 17, 1.15, 3.6);
+      ctx.scriptedSpeedKmh = 105;
+      ctx.stageIdx = 1;
+      ctx.dialogSpec = ['mako', 'Row’s lit and the Row’s watching, Dax. Smooth hands — thread it, don’t kiss it.'];
+      ctx.feedLines = [
+        ['NEAR MISS — CIVILIAN TRAFFIC', false],
+        ['ROADBLOCK REPORTED AHEAD', true],
+        ['WANTED LEVEL 3 — MBPD RESPONDING', true],
+      ];
+      ctx.zone = 'CASINO ROW';
+      break;
+    }
+    case 'day': {
+      ctx.setMood('day');
+      hero.place(-106, -63.5, 2.25, 0); // under the canopy, nose swung toward camera
+      police.setWanted(0);
+      dax.place(-115.5, -59.8, 1.93); // lower-left foreground, walking to the car
+      dax.walkSpeed = 2.2;
+      vera.place(-108.6, -60.6, -1.5); // beside the GT on the camera side, facing Dax
+      ivy.place(-124.5, -50, 2.6); // lookout on the boulevard corner
+      ctx.peds[0]?.place(-109, -50.5, 2.8); // guests crossing the driveway
+      ctx.peds[1]?.place(-99.5, -58.5, -0.8);
+      ctx.cam(-120.3, 2.0, -55.8, -105.5, 1.55, -63.8);
+      ctx.scriptedSpeedKmh = 0;
+      ctx.onFoot = true;
+      ctx.stageIdx = 0;
+      ctx.dialogSpec = ['vera', DIALOG.intro.line];
+      ctx.feedLines = [
+        ['CREW IN POSITION', false],
+        ['JOB STARTED — LIFT THE VANTARA GT', false],
+      ];
+      ctx.zone = 'CASINO ROW';
+      ctx.zoneOverride = 'THE STRAND · AZURE PEARL';
+      break;
+    }
+    case 'harbor': {
+      ctx.setMood('night');
+      hero.place(168, 213, 0, 12);
+      hero.setHeadlights(true, 0.85);
+      police.setWanted(2);
+      police.deploy(0, 171.8, 223, Math.PI); // facing the camera on the pier lane, lamps lit
+      police.units[0].car.setHeadlights(true, 0.9);
+      police.deploy(1, 152, 192, 0.7); // rolling through the yard, left of frame
+      police.deploy(2, 198, 176, -2.2); // far corner of the yard
+      police.deploy(3, 138, 158, 1.2); // back by the cross street
+      ctx.gusAtPier();
+      ctx.cam(168.8, 2.45, 204.4, 167.4, 0.95, 226);
+      ctx.scriptedSpeedKmh = 55;
+      ctx.stageIdx = 2;
+      ctx.dialogSpec = ['gus', DIALOG.pier.line];
+      ctx.feedLines = [
+        ['JOB — MAKE THE PIER', false],
+        ['WANTED LEVEL 2 — HARBOR PATROL', true],
+        ['DELIVERY WINDOW — 1:36 TO THE TIDE', false],
+      ];
+      ctx.zone = 'HARBORFRONT';
+      break;
+    }
+    default:
+      return false;
   }
-
-  if (n === 2) {
-    // DUSK — Casino Row escape, neon signs, roadblock ahead, cruiser behind.
-    world.setPhase('dusk');
-    mission.stage = 1;
-    G.setWanted(3, true);
-    G.enterCar(G.hero, true);
-    G.hero.body.place(-6, -45.4, -Math.PI / 2); // eastbound on Casino Row
-    G.hero.body.speed = 29;
-    poseCruiser(G, 0, 7, -38.6, -Math.PI / 2 - 0.35);  // right flank, ramming
-    poseCruiser(G, 1, 17, -49.5, -Math.PI / 2 + 0.2);  // ahead-left, cutting in
-    G.cruisers[1].tag = 'FLANKING';
-    G.roadblock.place(46, -42, -Math.PI / 2);
-    G.heli.active = false; G.heli.group.visible = false;
-    G.moveCrew('mako', 2, -50, -2);
-    hud.setDialog('mako', 'Roadblock at the next lights! Take the valet lane — thread it, don’t kiss it!', G.now);
-    feedAll(G, ['ROADBLOCK REPORTED AHEAD', 'WANTED LEVEL 3 — MBPD RESPONDING', 'NEAR MISS — CIVILIAN TRAFFIC']);
-    G.snapCamera();
-  }
-
-  if (n === 3) {
-    // DAY — on foot at the Azure Pearl, Vera beside Dax, beacon on the GT.
-    world.setPhase('day');
-    mission.stage = 0;
-    G.setWanted(0, true);
-    G.exitCar(true);
-    G.hero.body.place(PLACES.gtSpot.x + 1.5, PLACES.gtSpot.z + 2, 0.5);
-    G.hero.body.speed = 0;
-    G.player.group.position.set(5.2, 0, -52.8);
-    G.player.heading = 0.5;                      // facing the GT / casino canopy
-    G.moveCrew('vera', -0.5, -49.5, 2.6);
-    G.moveCrew('mako', 12, -57, -0.7);
-    world.beacon.position.set(PLACES.gtSpot.x + 1.5, 0.15, PLACES.gtSpot.z + 2);
-    world.beaconBeam.position.set(PLACES.gtSpot.x + 1.5, 13, PLACES.gtSpot.z + 2);
-    hud.setDialog('vera', 'That’s her — Vantara GT, keys in, tank full. Walk in calm, Dax. We drive out loud.', G.now);
-    feedAll(G, ['JOB STARTED — LIFT THE VANTARA GT', 'CREW IN POSITION']);
-    G.snapCamera();
-  }
-
-  if (n === 4) {
-    // NIGHT — Pier 9 delivery, spotlight + cruiser headlights, roster full.
-    world.setPhase('night');
-    mission.stage = 2;
-    mission.timer = 96;
-    G.setWanted(2, true);
-    G.enterCar(G.hero, true);
-    G.hero.body.place(122.6, 150, Math.PI);      // southbound avenue to the pier
-    G.hero.body.speed = 24;
-    poseCruiser(G, 0, 127.6, 166, Math.PI - 0.3);  // ahead-right, cutting in
-    poseCruiser(G, 1, 118.2, 154, Math.PI + 0.12); // left flank at the bumper
-    G.cruisers[0].tag = 'FLANKING'; G.cruisers[1].tag = 'RAMMING';
-    G.heli.active = true; G.heli.group.visible = true; G.heli.setLit(true);
-    G.heli.group.position.set(112, 17, 178);       // ahead, spotlight on the avenue
-    G.heli.poolGlow.position.y = -16.4;
-    G.moveCrew('gus', 100, 200, 2.8);
-    world.beacon.position.set(PLACES.pier.x, 0.15, PLACES.pier.z);
-    world.beaconBeam.position.set(PLACES.pier.x, 13, PLACES.pier.z);
-    hud.setDialog('gus', 'Berth four, lights on. Bring her down the pier slow — the boat crew is watching.', G.now);
-    feedAll(G, ['DELIVERY WINDOW — 1:36 TO THE TIDE', 'WANTED LEVEL 2 — HARBOR PATROL', 'JOB — MAKE THE PIER']);
-    G.snapCamera();
-  }
+  return true;
 }
