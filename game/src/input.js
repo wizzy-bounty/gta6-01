@@ -1,40 +1,33 @@
-// input.js — keyboard state for MARISOL BAY. One shared key map, edge
-// detection for the interact key, and a hook that unlocks audio on the
-// first real gesture.
+// input.js — keyboard + mouse state for driving and walking.
+// WASD/arrows drive, Space brakes, E enters/leaves a car, Shift runs,
+// M mutes, Enter starts. Nothing fancy, everything responsive.
 
 export class Input {
-  constructor(onFirstGesture) {
-    this.down = new Set();
-    this.pressed = new Set();
-    let gestured = false;
-    const gesture = () => {
-      if (!gestured) {
-        gestured = true;
-        onFirstGesture?.();
-      }
-    };
+  constructor() {
+    this.keys = new Set();
+    this.pressed = new Set(); // one-frame presses
+    this.mouseX = 0;
+    this.mouseDX = 0;
     window.addEventListener('keydown', (e) => {
-      gesture();
-      const k = e.key.toLowerCase();
-      if (!this.down.has(k)) this.pressed.add(k);
-      this.down.add(k);
-      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+      if (!this.keys.has(e.code)) this.pressed.add(e.code);
+      this.keys.add(e.code);
     });
-    window.addEventListener('keyup', (e) => this.down.delete(e.key.toLowerCase()));
-    window.addEventListener('pointerdown', gesture);
-    window.addEventListener('blur', () => this.down.clear());
+    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+    window.addEventListener('mousemove', (e) => {
+      this.mouseDX = e.movementX || 0;
+      this.mouseX = e.clientX;
+    });
+    window.addEventListener('blur', () => this.keys.clear());
   }
 
-  /** end-of-frame housekeeping: edge presses last exactly one frame */
-  postUpdate() {
-    this.pressed.clear();
-  }
+  down(code) { return this.keys.has(code); }
+  hit(code) { const h = this.pressed.has(code); if (h) this.pressed.delete(code); return h; }
 
-  get forward() { return this.down.has('w') || this.down.has('arrowup'); }
-  get back() { return this.down.has('s') || this.down.has('arrowdown'); }
-  get left() { return this.down.has('a') || this.down.has('arrowleft'); }
-  get right() { return this.down.has('d') || this.down.has('arrowright'); }
-  get nitro() { return this.down.has('shift'); }
-  get handbrake() { return this.down.has(' '); }
-  get interact() { return this.pressed.has('e'); }
+  get throttle() { return (this.down('KeyW') || this.down('ArrowUp') ? 1 : 0) - (this.down('KeyS') || this.down('ArrowDown') ? 1 : 0); }
+  get steer() { return (this.down('KeyA') || this.down('ArrowLeft') ? 1 : 0) - (this.down('KeyD') || this.down('ArrowRight') ? 1 : 0); }
+  get brake() { return this.down('Space'); }
+  get run() { return this.down('ShiftLeft') || this.down('ShiftRight'); }
+
+  endFrame() { this.pressed.clear(); }
 }

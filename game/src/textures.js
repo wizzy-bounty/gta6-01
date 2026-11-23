@@ -1,168 +1,158 @@
-// textures.js — every texture in MARISOL BAY is drawn on a canvas at load:
-// building facades with window grids, shop signs, road markings, glow discs.
-// No image files, no network — just 2D canvas painting.
+// textures.js — every surface in Marisol Bay is painted on a canvas at boot:
+// facades with lit windows, shopfronts with real signage, awnings, asphalt.
+// No image files, no network: the city prints its own wallpaper.
 
 import * as THREE from 'three';
+import { makeRng, hashKey } from './random.js';
 
-function canvas(w, h) {
+function canvasOf(w, h) {
   const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
+  c.width = w; c.height = h;
   return [c, c.getContext('2d')];
 }
 
-function toTexture(c) {
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
+function toTexture(canvas, repeatX = 1, repeatY = 1) {
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeatX, repeatY);
+  tex.anisotropy = 4;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
-const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
-
-// ---------------------------------------------------------------- facades
-// A facade: painted wall, a grid of windows, a lit-window twin for the
-// emissive map so the same building glows correctly at dusk and night.
-// litSeed makes the lit pattern stable per building archetype.
-export function facadeTextures({ base, trim, cols, rows, litSeed, litRatio = 0.42 }) {
-  const W = 256, H = 512;
-  const [c, g] = canvas(W, H);
-  const [ec, eg] = canvas(W, H);
-  g.fillStyle = hex(base);
-  g.fillRect(0, 0, W, H);
-  eg.fillStyle = '#000000';
-  eg.fillRect(0, 0, W, H);
-  // subtle vertical shading so flat walls still read as surfaces
-  const grad = g.createLinearGradient(0, 0, W, 0);
-  grad.addColorStop(0, 'rgba(0,0,0,0.16)');
-  grad.addColorStop(0.5, 'rgba(255,255,255,0.05)');
-  grad.addColorStop(1, 'rgba(0,0,0,0.20)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, W, H);
-  // cornice + ground floor band in the trim colour
-  g.fillStyle = hex(trim);
-  g.fillRect(0, 0, W, 14);
-  g.fillRect(0, H - 54, W, 54);
-
-  let s = litSeed >>> 0;
-  const rnd = () => {
-    s = (Math.imul(s ^ (s >>> 15), 2246822519) + 3266489917) | 0;
-    return ((s ^ (s >>> 13)) >>> 0) / 4294967296;
-  };
-  const mx = 18, my = 30, gw = (W - mx * 2) / cols, gh = (H - my - 74) / rows;
+// A tower facade: coloured render, a grid of windows, some lit warm at dusk.
+export function facadeTexture(base, trim, seed, litRatio = 0.34) {
+  const rng = makeRng(seed);
+  const [c, g] = canvasOf(256, 512);
+  g.fillStyle = base; g.fillRect(0, 0, 256, 512);
+  g.fillStyle = 'rgba(0,0,0,0.10)';
+  for (let i = 0; i < 26; i++) g.fillRect(rng.range(0, 256), rng.range(0, 512), rng.range(6, 40), rng.range(2, 6));
+  g.fillStyle = trim; g.fillRect(0, 0, 256, 10); g.fillRect(0, 502, 256, 10);
+  const cols = 6, rows = 14, ww = 26, wh = 20, gx = (256 - cols * ww) / (cols + 1), gy = (512 - rows * wh) / (rows + 1);
   for (let r = 0; r < rows; r++) {
     for (let col = 0; col < cols; col++) {
-      const x = mx + col * gw + 3, y = my + r * gh + 3, w = gw - 6, h = gh - 7;
-      const lit = rnd() < litRatio;
-      g.fillStyle = lit ? '#ffd98f' : '#2c3e50';
-      g.fillRect(x, y, w, h);
-      g.fillStyle = 'rgba(255,255,255,0.20)';
-      g.fillRect(x, y, w, 3);
-      if (lit) {
-        eg.fillStyle = rnd() < 0.25 ? '#ffb46b' : '#ffd98f';
-        eg.fillRect(x, y, w, h);
+      const x = gx + col * (ww + gx), y = gy + r * (wh + gy);
+      const lit = rng.next() < litRatio;
+      g.fillStyle = lit ? (rng.chance(0.7) ? '#ffd98a' : '#bfe8ff') : '#2c3e50';
+      g.fillRect(x, y, ww, wh);
+      g.fillStyle = 'rgba(255,255,255,0.25)';
+      g.fillRect(x, y, ww, 4);
+      if (rng.chance(0.24)) { // balcony rail on some windows
+        g.fillStyle = 'rgba(20,24,32,0.75)';
+        g.fillRect(x - 3, y + wh - 3, ww + 6, 3);
       }
     }
   }
-  return { map: toTexture(c), emissive: toTexture(ec) };
-}
-
-// ---------------------------------------------------------------- signs
-// Big readable signage: painted board, bold condensed letters, optional neon
-// twin colour for the emissive map.
-export function signTexture(text, { bg = 0x123, fg = '#ffffff', neon = null, w = 512, h = 128, sub = null } = {}) {
-  const [c, g] = canvas(w, h);
-  g.fillStyle = typeof bg === 'number' ? hex(bg) : bg;
-  g.fillRect(0, 0, w, h);
-  g.strokeStyle = neon ?? 'rgba(255,255,255,0.55)';
-  g.lineWidth = 5;
-  g.strokeRect(7, 7, w - 14, h - 14);
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  if (neon) {
-    g.shadowColor = neon;
-    g.shadowBlur = 22;
-    g.fillStyle = neon;
-  } else {
-    g.fillStyle = fg;
-  }
-  const size = sub ? h * 0.44 : h * 0.56;
-  g.font = `900 ${size}px 'Arial Narrow', Arial, sans-serif`;
-  g.fillText(text, w / 2, sub ? h * 0.38 : h * 0.52);
-  if (sub) {
-    g.shadowBlur = 0;
-    g.fillStyle = fg;
-    g.font = `700 ${h * 0.2}px 'Arial Narrow', Arial, sans-serif`;
-    g.fillText(sub, w / 2, h * 0.76);
-  }
   return toTexture(c);
 }
 
-// Vertical hotel blade sign, letters stacked.
-export function bladeSignTexture(text, { bg = 0x8a2a3a, fg = '#ffe9b0' } = {}) {
-  const [c, g] = canvas(96, 512);
-  g.fillStyle = hex(bg);
-  g.fillRect(0, 0, 96, 512);
-  g.strokeStyle = fg;
-  g.lineWidth = 4;
-  g.strokeRect(6, 6, 84, 500);
+// A ground-floor shopfront: big sign board with the shop's name, glass, awning stripes.
+export function shopTexture(name, signColor, awningColor, seed) {
+  const rng = makeRng(seed);
+  const [c, g] = canvasOf(512, 256);
+  g.fillStyle = '#3d3a45'; g.fillRect(0, 0, 512, 256);
+  // glass panes with interior glow
+  for (let i = 0; i < 4; i++) {
+    const x = 18 + i * 122;
+    const grad = g.createLinearGradient(0, 96, 0, 240);
+    grad.addColorStop(0, '#ffe9b0'); grad.addColorStop(1, '#c97b3f');
+    g.fillStyle = grad; g.fillRect(x, 100, 108, 138);
+    g.fillStyle = 'rgba(60,30,10,0.55)';
+    g.fillRect(x + 8, 190, 40, 48); g.fillRect(x + 58, 176, 42, 62);
+  }
+  g.fillStyle = '#241f2b'; g.fillRect(0, 84, 512, 14);
+  // awning: stripes
+  for (let i = 0; i < 16; i++) {
+    g.fillStyle = i % 2 ? awningColor : '#f6f1e7';
+    g.beginPath();
+    g.moveTo(i * 32, 98); g.lineTo(i * 32 + 32, 98); g.lineTo(i * 32 + 40, 128); g.lineTo(i * 32 + 8, 128);
+    g.closePath(); g.fill();
+  }
+  // sign board
+  g.fillStyle = signColor; g.fillRect(0, 0, 512, 84);
+  g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(0, 76, 512, 8);
+  g.fillStyle = '#ffffff';
+  g.font = 'bold 44px system-ui, sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.shadowColor = 'rgba(0,0,0,0.45)'; g.shadowBlur = 5; g.shadowOffsetY = 3;
+  g.fillText(name, 256, 44, 486);
+  g.shadowColor = 'transparent';
+  // bulbs along the sign's lower edge
+  g.fillStyle = '#ffe9a0';
+  for (let i = 0; i < 12; i++) { g.beginPath(); g.arc(22 + i * 42, 80, 3.4, 0, 7); g.fill(); }
+  void rng;
+  return toTexture(c);
+}
+
+// Asphalt with a worn centre line feel; sidewalks get their own tint in world.js.
+export function asphaltTexture(seed) {
+  const rng = makeRng(seed);
+  const [c, g] = canvasOf(256, 256);
+  g.fillStyle = '#3a3f47'; g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 2600; i++) {
+    g.fillStyle = rng.chance(0.5) ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.13)';
+    g.fillRect(rng.range(0, 256), rng.range(0, 256), 2, 2);
+  }
+  g.fillStyle = 'rgba(0,0,0,0.16)';
+  g.fillRect(0, 118, 256, 20); g.fillRect(108, 0, 20, 256);
+  return toTexture(c, 1, 1);
+}
+
+export function sandTexture(seed) {
+  const rng = makeRng(seed);
+  const [c, g] = canvasOf(256, 256);
+  g.fillStyle = '#f2d492'; g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 1600; i++) {
+    g.fillStyle = rng.chance(0.5) ? 'rgba(190,150,80,0.16)' : 'rgba(255,255,255,0.14)';
+    g.fillRect(rng.range(0, 256), rng.range(0, 256), 2, 2);
+  }
+  return toTexture(c, 8, 8);
+}
+
+export function waterTexture(seed) {
+  const rng = makeRng(seed);
+  const [c, g] = canvasOf(256, 256);
+  g.fillStyle = '#14586e'; g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 240; i++) {
+    g.strokeStyle = `rgba(140,230,255,${rng.range(0.05, 0.22)})`;
+    g.lineWidth = rng.range(1, 2.4);
+    const y = rng.range(0, 256);
+    g.beginPath(); g.moveTo(rng.range(0, 200), y); g.lineTo(rng.range(40, 256), y); g.stroke();
+  }
+  return toTexture(c, 10, 10);
+}
+
+// A vertical banner / billboard face with a big word on it.
+export function bannerTexture(word, bg, fg, seed) {
+  const [c, g] = canvasOf(256, 256);
+  g.fillStyle = bg; g.fillRect(0, 0, 256, 256);
+  g.fillStyle = 'rgba(255,255,255,0.14)'; g.fillRect(0, 0, 256, 26); g.fillRect(0, 230, 256, 26);
   g.fillStyle = fg;
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.font = `900 44px 'Arial Narrow', Arial, sans-serif`;
-  const letters = text.replace(/ /g, '').split('');
-  letters.forEach((ch, i) => g.fillText(ch, 48, 44 + i * (440 / Math.max(letters.length - 1, 1))));
+  g.font = 'bold 52px system-ui, sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  const words = word.split(' ');
+  words.forEach((w, i) => g.fillText(w, 128, 92 + i * 62, 226));
+  g.fillStyle = 'rgba(255,255,255,0.5)';
+  g.font = 'bold 19px system-ui, sans-serif';
+  g.fillText('· MARISOL BAY ·', 128, 92 + words.length * 62 + 6, 226);
+  void seed;
   return toTexture(c);
 }
 
-// ---------------------------------------------------------------- glow disc
-// Soft radial disc used for every glow sprite: headlights, light bars,
-// street lamps, the sun, spotlight pools.
-export function glowTexture(inner = 'rgba(255,255,255,1)') {
-  const [c, g] = canvas(128, 128);
-  const grad = g.createRadialGradient(64, 64, 2, 64, 64, 64);
-  grad.addColorStop(0, inner);
-  grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 128, 128);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
-// ---------------------------------------------------------------- roads
-// Asphalt with a worn centre line; drawn once and repeated along a street.
-export function roadTexture() {
-  const [c, g] = canvas(128, 256);
-  g.fillStyle = '#3d4048';
-  g.fillRect(0, 0, 128, 256);
-  for (let i = 0; i < 500; i++) {
-    g.fillStyle = `rgba(${Math.random() > 0.5 ? '255,255,255' : '0,0,0'},0.05)`;
-    g.fillRect(Math.random() * 128, Math.random() * 256, 2, 2);
+// Palm frond sprite: drawn once, reused on every palm crown in the city.
+export function frondTexture() {
+  const [c, g] = canvasOf(256, 128);
+  g.clearRect(0, 0, 256, 128);
+  g.strokeStyle = '#2e9e4f'; g.lineWidth = 8; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(6, 118); g.quadraticCurveTo(120, 6, 250, 88); g.stroke();
+  g.lineWidth = 4.2; g.strokeStyle = '#3cb85e';
+  for (let i = 0; i < 22; i++) {
+    const t = i / 22, x = 16 + t * 224, y = 114 - Math.sin(t * 2.35) * 72 + t * 22;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + 7, y + 30); g.stroke();
   }
-  g.fillStyle = '#e8c85a';
-  g.fillRect(61, 20, 6, 64);
-  g.fillRect(61, 156, 6, 64);
-  g.fillStyle = 'rgba(255,255,255,0.75)';
-  g.fillRect(2, 0, 4, 256);
-  g.fillRect(122, 0, 4, 256);
-  const t = toTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  return t;
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
-// Wet-look sheen strip for dusk streets: a soft light streak texture laid
-// over the asphalt so neon and headlights smear along the road.
-export function sheenTexture() {
-  const [c, g] = canvas(64, 256);
-  const grad = g.createLinearGradient(0, 0, 64, 0);
-  grad.addColorStop(0, 'rgba(255,255,255,0)');
-  grad.addColorStop(0.5, 'rgba(255,255,255,0.30)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 64, 256);
-  const t = toTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  return t;
-}
+export function seedFor(key) { return hashKey(key); }

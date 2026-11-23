@@ -4,176 +4,155 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MARISOL BAY — an open-world crime game</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23ff5340'/></svg>">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0f18; }
-  body { font-family: 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; color: #f2f4f8; }
-  #app, #app canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-  .panel {
-    background: linear-gradient(160deg, rgba(10,17,28,.86), rgba(10,17,28,.72));
-    border: 1px solid rgba(255,255,255,.16);
-    border-radius: 10px;
-    box-shadow: 0 6px 24px rgba(0,0,0,.35);
-    backdrop-filter: blur(3px);
-  }
-  /* ---------- mission card (top-left) ---------- */
-  #mission { position: absolute; left: 18px; top: 16px; width: 302px; padding: 12px 14px 11px; border-top: 3px solid #ffd43b; }
-  #mission .kicker { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: .14em; color: #ffd43b; font-weight: 700; }
-  #m-timer { color: #fff; background: rgba(255,255,255,.12); padding: 1px 7px; border-radius: 4px; letter-spacing: .05em; }
-  #m-title { font-size: 25px; font-weight: 900; letter-spacing: .02em; margin: 3px 0 2px; }
-  #m-objective { font-size: 13.5px; line-height: 1.3; color: #dfe6ef; }
-  #m-segments { display: flex; gap: 5px; margin: 8px 0 7px; }
-  .seg { flex: 1; height: 5px; border-radius: 3px; background: rgba(255,255,255,.18); }
-  .seg.live { background: #ffd43b; }
-  .seg.done { background: #2ae0a0; }
-  #m-next { font-size: 12.5px; color: #aeb9c8; }
-  #m-next b { color: #ffd43b; letter-spacing: .1em; }
-  /* ---------- dispatch (under mission) ---------- */
-  #dispatch { position: absolute; left: 18px; top: 196px; width: 302px; padding: 10px 14px; }
-  #dispatch .d-head { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: .14em; color: #9fb4cc; font-weight: 700; margin-bottom: 6px; }
-  #dispatch-count { color: #fff; }
-  .d-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 2.5px 0; }
-  .d-row .d-id { width: 74px; font-weight: 700; letter-spacing: .04em; }
-  .d-row .d-tag { font-size: 10px; font-weight: 800; letter-spacing: .08em; color: #10131a; padding: 2px 7px; border-radius: 4px; }
-  .d-row .d-dist { margin-left: auto; color: #ffd43b; font-weight: 700; }
-  .d-row.dim { color: #7c8798; }
-  /* ---------- minimap + vitals (bottom-left) ---------- */
-  #zone-label { position: absolute; left: 18px; bottom: 292px; font-size: 15px; font-weight: 900; letter-spacing: .22em; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,.8); }
-  #minimap-wrap { position: absolute; left: 18px; bottom: 62px; width: 220px; height: 220px; border-radius: 50%; overflow: hidden; border: 3px solid rgba(255,255,255,.55); box-shadow: 0 8px 28px rgba(0,0,0,.5); }
-  #minimap { width: 220px; height: 220px; }
-  #vitals { position: absolute; left: 18px; bottom: 14px; width: 220px; font-size: 11px; font-weight: 800; letter-spacing: .1em; }
-  .vital { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-  .vital .bar { flex: 1; height: 8px; background: rgba(255,255,255,.16); border-radius: 4px; overflow: hidden; }
-  .vital .fill { height: 100%; border-radius: 4px; }
-  #health-fill { background: #3ddc84; }
-  #armor-fill { background: #4da3ff; }
-  .vital span:last-child { width: 26px; text-align: right; color: #fff; }
-  /* ---------- status (top-right) ---------- */
-  #status { position: absolute; right: 18px; top: 16px; width: 252px; padding: 10px 14px; text-align: right; }
-  #clock { font-size: 12px; color: #aeb9c8; letter-spacing: .12em; font-weight: 700; }
-  #cash { font-size: 31px; font-weight: 900; color: #3ddc84; line-height: 1.05; }
-  #stars { font-size: 21px; letter-spacing: 3px; }
-  .star { color: rgba(255,255,255,.22); }
-  .star.on { color: #ffd43b; text-shadow: 0 0 9px rgba(255,212,59,.75); }
-  #spotted { font-size: 11px; font-weight: 800; letter-spacing: .16em; min-height: 14px; }
-  #spotted.hot { color: #ff6b6b; }
-  #spotted.cool { color: #7fd4ff; }
-  #respect-line { font-size: 11px; color: #ffd43b; letter-spacing: .08em; font-weight: 700; margin-top: 2px; }
-  /* ---------- crew cards ---------- */
-  #crew-cards { position: absolute; right: 18px; top: 158px; width: 252px; display: flex; flex-direction: column; gap: 7px; }
-  .crew-card { display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 6px; border-radius: 10px;
-    background: linear-gradient(160deg, rgba(10,17,28,.86), rgba(10,17,28,.7)); border: 1px solid rgba(255,255,255,.16); }
-  .crew-card canvas { width: 44px; height: 44px; border-radius: 7px; }
-  .crew-meta { flex: 1; min-width: 0; }
-  .crew-name { font-size: 14.5px; font-weight: 900; letter-spacing: .03em; }
-  .crew-name span { color: #ffd43b; font-size: 10.5px; letter-spacing: .1em; }
-  .crew-status { font-size: 10.5px; color: #aeb9c8; letter-spacing: .06em; white-space: nowrap; overflow: hidden; }
-  .crew-key { font-size: 12px; font-weight: 900; color: #10131a; background: #ffd43b; border-radius: 5px; padding: 3px 7px; }
-  /* ---------- weapons + radio ---------- */
-  #weapons { position: absolute; right: 18px; top: 470px; width: 252px; display: flex; gap: 5px; }
-  .weapon { flex: 1; min-width: 0; padding: 5px 4px 6px; text-align: center; border-radius: 8px;
-    background: linear-gradient(160deg, rgba(10,17,28,.86), rgba(10,17,28,.7)); border: 1px solid rgba(255,255,255,.16); }
-  .weapon.selected { border-color: #ffd43b; box-shadow: 0 0 0 1px #ffd43b inset; }
-  .weapon.locked { opacity: .45; }
-  .w-slot { font-size: 9px; color: #9fb4cc; font-weight: 800; }
-  .w-name { font-size: 10px; font-weight: 900; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .w-ammo { font-size: 11px; color: #ffd43b; font-weight: 800; }
-  #radio-line { position: absolute; right: 18px; top: 532px; width: 252px; text-align: right; font-size: 12px; color: #7fd4ff; letter-spacing: .04em; text-shadow: 0 1px 6px rgba(0,0,0,.9); }
-  /* ---------- vehicle (bottom-right) ---------- */
-  #vehicle { position: absolute; right: 18px; bottom: 14px; width: 252px; padding: 10px 14px; text-align: right; }
-  #veh-name { font-size: 13px; font-weight: 900; letter-spacing: .14em; color: #ffd43b; }
-  #veh-speed { font-size: 44px; font-weight: 900; line-height: 1; }
-  #veh-speed small { font-size: 14px; color: #aeb9c8; }
-  .cond { display: flex; align-items: center; gap: 8px; font-size: 10px; letter-spacing: .12em; color: #aeb9c8; font-weight: 800; margin-top: 5px; }
-  .cond .bar { flex: 1; height: 7px; background: rgba(255,255,255,.16); border-radius: 4px; overflow: hidden; }
-  #veh-condition { height: 100%; background: #3ddc84; border-radius: 4px; }
-  /* ---------- feed ---------- */
-  #feed { position: absolute; right: 18px; bottom: 148px; width: 300px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
-  .feed-line { font-size: 11.5px; font-weight: 800; letter-spacing: .09em; color: #dfe6ef; background: rgba(10,17,28,.66); padding: 4px 10px; border-radius: 5px; border-right: 3px solid #ffd43b; }
-  .feed-line.hot { color: #ffb3b3; border-right-color: #e5484d; }
-  /* ---------- dialog ---------- */
-  #dialog { position: absolute; left: 50%; bottom: 30px; transform: translate(-50%, 16px); width: 540px; max-width: 92vw;
-    display: flex; gap: 12px; padding: 12px 16px 12px 12px; align-items: center; opacity: 0; transition: all .25s ease; pointer-events: none; }
-  #dialog.show { opacity: 1; transform: translate(-50%, 0); }
-  #dialog-portrait { width: 62px; height: 62px; border-radius: 9px; flex: none; }
-  #dialog-name { font-size: 13px; font-weight: 900; color: #4dd8ff; letter-spacing: .05em; }
-  #dialog-name span { color: #ffd43b; font-size: 10.5px; letter-spacing: .12em; margin-left: 6px; }
-  #dialog-line { font-size: 15.5px; line-height: 1.35; color: #f2f4f8; }
-  /* ---------- banner ---------- */
-  #banner { position: absolute; left: 50%; top: 88px; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity .3s ease; pointer-events: none; }
-  #banner.show { opacity: 1; }
-  #banner-main { font-size: 44px; font-weight: 900; letter-spacing: .12em; color: #fff; text-shadow: 0 4px 22px rgba(0,0,0,.75); }
-  #banner-sub { font-size: 14px; font-weight: 800; letter-spacing: .3em; color: #ffd43b; text-shadow: 0 2px 10px rgba(0,0,0,.8); }
-  #controls-hint { position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%); font-size: 10.5px; letter-spacing: .14em; color: rgba(255,255,255,.55); text-shadow: 0 1px 4px rgba(0,0,0,.9); white-space: nowrap; }
-  /* ---------- start overlay ---------- */
-  #start-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    background: radial-gradient(ellipse at 50% 65%, rgba(229,107,154,.28), rgba(8,10,20,.88) 70%); cursor: pointer; z-index: 5; }
-  #start-overlay h1 { font-size: 84px; font-weight: 900; letter-spacing: .06em; color: #fff; text-shadow: 0 6px 34px rgba(0,0,0,.7); }
-  #start-overlay h1 em { font-style: normal; color: #ff5340; }
-  #start-overlay .sub { font-size: 16px; letter-spacing: .34em; color: #ffd43b; font-weight: 800; margin: 6px 0 26px; }
-  #start-overlay .play { font-size: 19px; font-weight: 900; letter-spacing: .2em; background: #ff5340; color: #fff; padding: 12px 34px; border-radius: 9px; box-shadow: 0 10px 30px rgba(255,83,64,.4); }
-  #start-overlay .keys { margin-top: 26px; font-size: 13px; letter-spacing: .12em; color: #c8d2e0; text-align: center; line-height: 1.9; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #10131c; font-family: system-ui, 'Segoe UI', sans-serif; }
+  #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; }
+  .card { background: rgba(13, 17, 28, 0.78); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; backdrop-filter: blur(2px); }
+  /* mission card, top-left */
+  #mission-card { position: absolute; top: 14px; left: 14px; width: 342px; padding: 10px 13px 11px; border-top: 4px solid #ffc53d; }
+  #hud-mission-kicker { color: #ffc53d; font-weight: 800; font-size: 12.5px; letter-spacing: 0.6px; }
+  #hud-mission-timer { float: right; background: #1d2739; border: 1px solid rgba(255,255,255,0.25); border-radius: 6px; padding: 1px 7px; color: #fff; font-size: 13px; }
+  #hud-mission-title { font-size: 25px; font-weight: 900; letter-spacing: 0.4px; margin: 2px 0 3px; }
+  #hud-mission-obj { font-size: 14.5px; line-height: 1.3; color: #f2f4f8; }
+  #hud-stage-pips { display: flex; gap: 5px; margin: 8px 0 6px; }
+  .pip { height: 7px; flex: 1; border-radius: 3px; background: rgba(255,255,255,0.18); }
+  .pip.done { background: #ffc53d; }
+  .pip.now { background: #ff7847; }
+  .next-line { font-size: 13px; color: #cfd8e3; }
+  .next-line b { color: #54a0ff; letter-spacing: 0.5px; }
+  /* dispatch board */
+  #dispatch-card { position: absolute; top: 218px; left: 14px; width: 342px; padding: 9px 13px; }
+  #dispatch-head { display: flex; justify-content: space-between; font-weight: 800; font-size: 13.5px; letter-spacing: 0.5px; color: #ff8fa3; }
+  #hud-dispatch-count { color: #fff; }
+  .dispatch-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13.5px; }
+  .d-name { font-weight: 700; width: 86px; }
+  .d-dist { color: #cfd8e3; width: 52px; text-align: right; }
+  .d-tag { margin-left: auto; font-size: 10.5px; font-weight: 800; letter-spacing: 0.4px; padding: 2px 7px; border-radius: 4px; color: #fff; }
+  .dispatch-more { margin-top: 6px; font-size: 12px; color: #9fb2c8; }
+  /* top-right stack */
+  #top-right { position: absolute; top: 12px; right: 16px; text-align: right; }
+  #hud-clock { font-size: 15px; font-weight: 700; color: #eaf2fb; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+  #hud-cash { font-size: 37px; font-weight: 900; color: #3ddc84; text-shadow: 0 2px 5px rgba(0,0,0,0.55); line-height: 1.05; }
+  #hud-stars { font-size: 24px; letter-spacing: 3px; }
+  .star { color: rgba(255,255,255,0.28); text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+  .star.on { color: #ffd53d; }
+  #hud-sight { display: inline-block; margin-top: 3px; background: #d90429; color: #fff; font-weight: 800; font-size: 12px; padding: 3px 9px; border-radius: 5px; letter-spacing: 0.4px; }
+  #rank-line { margin-top: 7px; font-size: 13px; }
+  #hud-rank-name { background: #20304f; border: 1px solid #ffc53d; color: #ffc53d; font-weight: 800; padding: 2px 8px; border-radius: 5px; letter-spacing: 0.5px; }
+  #respect-bar { display: inline-block; vertical-align: middle; width: 110px; height: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; margin: 0 7px; overflow: hidden; }
+  #hud-respect-fill { display: block; height: 100%; background: #ffc53d; width: 30%; }
+  /* weapons strip */
+  #hud-weapons { position: absolute; top: 202px; right: 16px; display: flex; gap: 6px; }
+  .weapon { width: 74px; padding: 6px 7px 5px; background: rgba(13,17,28,0.78); border: 1px solid rgba(255,255,255,0.16); border-radius: 8px; text-align: center; }
+  .weapon.active { border-color: #ffc53d; background: rgba(50, 38, 10, 0.85); }
+  .weapon.locked { opacity: 0.45; }
+  .w-key { float: left; font-size: 10px; color: #9fb2c8; font-weight: 800; }
+  .w-icon { display: block; font-size: 17px; font-weight: 900; letter-spacing: 1px; color: #ffd98a; }
+  .w-name { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: 0.3px; color: #e8eef6; }
+  .w-ammo { display: block; font-size: 11px; font-weight: 800; color: #fff; }
+  /* crew cards */
+  #hud-crew { position: absolute; top: 282px; right: 16px; width: 208px; display: flex; flex-direction: column; gap: 6px; }
+  .crew-card { display: flex; align-items: center; gap: 9px; background: rgba(13,17,28,0.78); border: 1px solid rgba(255,255,255,0.14); border-radius: 9px; padding: 6px 9px; }
+  .crew-face { width: 34px; height: 34px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+  .crew-text b { display: block; font-size: 13.5px; letter-spacing: 0.4px; }
+  .crew-text i { font-style: normal; font-size: 11.5px; color: #9fb2c8; }
+  .crew-badge { margin-left: auto; background: #ffc53d; color: #1d2739; font-weight: 900; font-size: 12px; min-width: 21px; height: 21px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+  /* bottom-left: minimap + vitals */
+  #map-wrap { position: absolute; left: 16px; bottom: 16px; width: 196px; }
+  #hud-minimap { width: 196px; height: 196px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.35); background: #20303c; display: block; }
+  #district-line { margin-top: 7px; text-shadow: 0 1px 3px rgba(0,0,0,0.65); }
+  #hud-district { font-size: 19px; font-weight: 900; color: #ffc53d; letter-spacing: 0.5px; }
+  #hud-district-sub { font-size: 12.5px; color: #e8eef6; }
+  .vital { display: flex; align-items: center; gap: 7px; margin-top: 5px; font-size: 12px; font-weight: 800; }
+  .vital .bar { flex: 1; height: 9px; background: rgba(255,255,255,0.22); border-radius: 4px; overflow: hidden; }
+  #hud-health-fill { display: block; height: 100%; background: #3ddc84; width: 100%; }
+  #hud-armor-fill { display: block; height: 100%; background: #54a0ff; width: 55%; }
+  /* dialogue */
+  #hud-dialogue { position: absolute; left: 50%; transform: translateX(-50%); bottom: 18px; width: 520px; max-width: 46vw; display: flex; gap: 11px; padding: 10px 13px; align-items: flex-start; }
+  #hud-dlg-face { width: 46px; height: 46px; border-radius: 9px; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 16px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+  #hud-dlg-name { color: #2ec4b6; font-weight: 900; font-size: 14.5px; letter-spacing: 0.3px; }
+  #hud-dlg-role { color: #9fb2c8; font-weight: 700; font-size: 11px; margin-left: 6px; letter-spacing: 0.6px; }
+  #hud-dlg-text { font-size: 14.5px; line-height: 1.35; margin-top: 2px; }
+  /* bottom-right: radio + vehicle */
+  #br-stack { position: absolute; right: 16px; bottom: 16px; width: 312px; text-align: right; }
+  #hud-radio { display: inline-block; background: rgba(13,17,28,0.78); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; color: #7be3c3; margin-bottom: 7px; }
+  #hud-vehicle { padding: 9px 13px; text-align: right; }
+  #hud-veh-name { font-size: 16.5px; font-weight: 900; letter-spacing: 0.5px; color: #7be3c3; }
+  .cond-line { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 800; color: #cfd8e3; margin: 4px 0; }
+  .cond-line .bar { flex: 1; height: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; overflow: hidden; }
+  #hud-veh-cond { display: block; height: 100%; background: #3ddc84; width: 90%; }
+  #hud-veh-speed { font-size: 43px; font-weight: 900; line-height: 1; }
+  #hud-veh-speed small { font-size: 13px; color: #9fb2c8; margin-left: 5px; letter-spacing: 1px; }
+  /* start screen */
+  #start-screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 9vh; background: linear-gradient(180deg, rgba(10,10,25,0.06) 40%, rgba(10,10,25,0.55)); color: #fff; text-align: center; }
+  #start-screen h1 { font-size: 64px; font-weight: 900; letter-spacing: 2px; color: #fff; text-shadow: 0 4px 0 #d90429, 0 8px 22px rgba(0,0,0,0.6); }
+  #start-screen h2 { font-size: 17px; font-weight: 700; color: #ffd98a; letter-spacing: 3px; margin: 4px 0 18px; }
+  #start-btn { pointer-events: auto; cursor: pointer; background: #d90429; color: #fff; border: 0; font-size: 19px; font-weight: 900; letter-spacing: 1px; padding: 13px 42px; border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.45); }
+  #start-btn:hover { background: #ff2445; }
+  #start-screen p { margin-top: 14px; font-size: 13.5px; color: #e8eef6; text-shadow: 0 1px 3px rgba(0,0,0,0.7); line-height: 1.5; }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<div id="app"></div>
+<canvas id="game-canvas"></canvas>
 
-<div id="mission" class="panel">
-  <div class="kicker"><span>THE JOB</span><span id="m-timer">0:00</span></div>
-  <div id="m-title">LIFT THE GT</div>
-  <div id="m-objective">Steal the Vantara GT from the Azure Pearl porte-cochère</div>
-  <div id="m-segments"><div class="seg live"></div><div class="seg"></div><div class="seg"></div></div>
-  <div id="m-next"><b>NEXT</b>  Get in the GT — driver’s side</div>
+<div id="hud" style="display:none">
+  <div id="mission-card" class="card">
+    <div><span id="hud-mission-kicker">JOB 1/8</span><span id="hud-mission-timer"></span></div>
+    <div id="hud-mission-title">MARISOL BAY</div>
+    <div id="hud-mission-obj"></div>
+    <div id="hud-stage-pips"></div>
+    <div class="next-line"><b>NEXT</b> · <span id="hud-mission-next"></span></div>
+  </div>
+
+  <div id="dispatch-card" class="card">
+    <div id="dispatch-head"><span>◆ MBPD DISPATCH</span><span id="hud-dispatch-count">0 UNITS</span></div>
+    <div id="hud-dispatch"></div>
+  </div>
+
+  <div id="top-right">
+    <div id="hud-clock">18:12</div>
+    <div id="hud-cash">$0</div>
+    <div id="hud-stars"></div>
+    <div><span id="hud-sight" style="display:none"></span></div>
+    <div id="rank-line"><span id="hud-rank-name">FIXER</span><span id="respect-bar"><span id="hud-respect-fill"></span></span><span id="hud-respect-text"></span></div>
+  </div>
+
+  <div id="hud-weapons"></div>
+  <div id="hud-crew"></div>
+
+  <div id="map-wrap">
+    <canvas id="hud-minimap" width="196" height="196"></canvas>
+    <div id="district-line"><div id="hud-district">CORAL STRAND</div><div id="hud-district-sub">Marisol Bay</div></div>
+    <div class="vital"><span>HEALTH</span><span class="bar"><span id="hud-health-fill"></span></span><span id="hud-health-text">100</span></div>
+    <div class="vital"><span>ARMOR</span><span class="bar"><span id="hud-armor-fill"></span></span><span id="hud-armor-text">55</span></div>
+  </div>
+
+  <div id="hud-dialogue" class="card">
+    <div id="hud-dlg-face">VS</div>
+    <div><span id="hud-dlg-name">Vera Solano</span><span id="hud-dlg-role">FIXER</span><div id="hud-dlg-text"></div></div>
+  </div>
+
+  <div id="br-stack">
+    <div id="hud-radio"></div>
+    <div id="hud-vehicle" class="card">
+      <div id="hud-veh-name">SOLANA GT</div>
+      <div class="cond-line"><span>CONDITION</span><span class="bar"><span id="hud-veh-cond"></span></span></div>
+      <div id="hud-veh-speed">0<small>KM/H</small></div>
+    </div>
+  </div>
 </div>
 
-<div id="dispatch" class="panel">
-  <div class="d-head"><span>MBPD DISPATCH</span><span id="dispatch-count">0 UNITS</span></div>
-  <div id="dispatch-list"><div class="d-row dim">No units responding</div></div>
-</div>
-
-<div id="zone-label">THE STRAND</div>
-<div id="minimap-wrap"><canvas id="minimap" width="220" height="220"></canvas></div>
-<div id="vitals">
-  <div class="vital"><span>HEALTH</span><div class="bar"><div class="fill" id="health-fill" style="width:100%"></div></div><span id="health-num">100</span></div>
-  <div class="vital"><span>ARMOR</span><div class="bar"><div class="fill" id="armor-fill" style="width:55%"></div></div><span id="armor-num">55</span></div>
-</div>
-
-<div id="status" class="panel">
-  <div id="clock">17:42</div>
-  <div id="cash">$18,450</div>
-  <div id="stars"></div>
-  <div id="spotted"></div>
-  <div id="respect-line">RESPECT · WHEELMAN 320 / 550</div>
-</div>
-
-<div id="crew-cards"></div>
-<div id="weapons"></div>
-<div id="radio-line"></div>
-<div id="feed"></div>
-
-<div id="vehicle" class="panel">
-  <div id="veh-name">VANTARA GT</div>
-  <div id="veh-speed">0 <small>MPH</small></div>
-  <div class="cond"><span>CONDITION</span><div class="bar"><div id="veh-condition" style="width:100%"></div></div></div>
-</div>
-
-<div id="dialog" class="panel">
-  <canvas id="dialog-portrait" width="96" height="96"></canvas>
-  <div><div id="dialog-name">VERA SOLANO <span>PLANNER</span></div><div id="dialog-line"></div></div>
-</div>
-
-<div id="banner"><div id="banner-main"></div><div id="banner-sub"></div></div>
-<div id="controls-hint">WASD drive · E enter / exit · SHIFT nitro · SPACE handbrake</div>
-
-<div id="start-overlay">
-  <h1>MARISOL <em>BAY</em></h1>
-  <div class="sub">ONE CAR · THREE STAGES · FIVE STARS</div>
-  <div class="play">CLICK TO PLAY</div>
-  <div class="keys">WASD / ARROWS — move &amp; drive &nbsp;·&nbsp; E — enter the car<br>SHIFT — nitro &nbsp;·&nbsp; SPACE — handbrake</div>
+<div id="start-screen">
+  <h1>MARISOL BAY</h1>
+  <h2>EIGHT JOBS · ONE BAY · NO SECOND TAKES</h2>
+  <button id="start-btn">START ENGINE</button>
+  <p>WASD / arrows drive · Space brake · E get in or out · Shift run · M mute<br>
+  Steal cars, run Vera's eight jobs, and mind the MBPD stars.</p>
 </div>
 
 <script type="module" src="./src/main.js"></script>

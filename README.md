@@ -4,64 +4,51 @@
 [![Rank](https://make.fun/badge/gta6-01/wizzy-bounty/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
 [![Reward](https://make.fun/badge/gta6-01/wizzy-bounty/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
 
-An original open-world crime game in the spirit of a sun-drenched coastal
-crime saga — built with Three.js, handed in as plain static files, no network
-required at run time.
+An original open-world crime game that plays in a desktop browser from static
+files — no build step, no network. You are **Dax Marlowe**, wheelman for Vera
+Solano's crew, working eight story jobs across a sun-soaked bay city: the
+Coral Strand beachfront, Casino Row at dusk, the Azure Pearl plaza, and the
+Pier 9 harbour at night.
 
-## The city
+## What's in the bay
 
-Marisol Bay is an invented coastal city of three districts:
+- **A whole city, on foot and by car** — a 9×9 street grid of towers with lit
+  windows, shopfronts with real signs, palms, a beach with umbrellas, a plaza
+  with a fountain and market stalls, and a harbour pier with a Ferris wheel,
+  a lit yacht and working cranes.
+- **Traffic and pedestrians** — ambient cars run the avenues, crowds stroll
+  the sidewalks and the plaza.
+- **Cars to steal and drive** — five Marisol models (Solana GT, Marisol
+  Regent, Caleta Sprint, Brisa Wagon, Tortuga Van); walk up, press E, it's
+  yours — and the MBPD notices.
+- **A wanted system that answers** — up to five stars of MBPD cruisers that
+  ram, flank and set roadblocks, named live on the dispatch board, plus
+  HERON-1, the police helicopter with a spotlight, at four stars and up.
+- **Missions and a story** — Vera's eight jobs, staged objectives, crew
+  dialogue, cash and respect that carry between sessions.
+- **A HUD with a live minimap** — mission card with stage pips, dispatch
+  board, weapon strip, crew cards, health and armour, radio, vehicle
+  condition and speed, and a minimap with police, traffic and waypoint blips.
+- **A start screen and a save** — progress persists in the browser.
 
-- **The Strand** — a palm-lined beachfront boulevard of pastel hotels
-  (the Solstice, the Azure Pearl, Casa Azul) above a wide public beach.
-- **Casino Row** — the downtown grid, all neon and glass towers, where the
-  heat is never more than one bad corner away.
-- **Harborfront** — warehouses, container yards and Pier 9, where Gus Ferro's
-  boat waits for cargo that was never declared.
+## Play it
 
-## The crew
-
-- **Dax Marlowe** — wheelman. That's you.
-- **Vera Solano** — planner. She talks, you drive.
-- **Mako Reyes** — mechanic. Keeps the Vantara GT alive and loud.
-- **Gus Ferro** — harbor muscle. Owns the pier, the boat, and the silence.
-- **Ivy Chen** — lookout. Eyes on the sky, always.
-
-## The job (3 stages)
-
-1. **Lift the GT** — walk up to the Azure Pearl porte-cochère and take the
-   coral Vantara GT that Mako left running.
-2. **Lose the heat** — the MBPD answers with cruisers, roadblocks and Air-1.
-   Break line of sight and stay cold until the stars cool.
-3. **Make the pier** — deliver the car to Gus at Pier 9 before the window
-   closes. Get paid, earn respect, and the run is saved.
-
-## Systems
-
-- On-foot and driving with a low chase camera, nitro and handbrake drifts.
-- Wanted level 0–5: cruiser pursuit with ramming and flanking behaviour,
-  a dispatch panel with per-unit status tags, and a helicopter with a live
-  spotlight cone at high heat.
-- Living traffic and pedestrians, golden-hour / dusk / day / night lighting
-  moods, and a full HUD: mission card, crew portraits, dispatch panel,
-  weapon strip, radio banner, dialog with portraits, an event feed and a
-  minimap with the wanted search ring.
-- Progress (cash, respect, stage) is saved in the browser.
-
-## Controls
-
-- **W A S D / arrow keys** — move / drive
-- **E** — enter or leave the car
-- **Shift** — nitro (in the car)
-- **Space** — handbrake
-
-## Run it
-
-```
-node serve.ts          # serves game/ at http://localhost:8080
-node main.ts           # hands the entry in: copies game/ + screenshots/ to
-                       # the output dir and writes dossier.json
+```sh
+node serve.ts            # then open http://localhost:8080
 ```
 
-Everything under `game/vendor/` is vendored library code (Three.js, MIT).
-The game itself is original: city, crew, names, art direction and code.
+WASD / arrows drive · Space brake · **E** get in or out of a car · Shift run ·
+M mute · Enter starts.
+
+## Layout
+
+- `game/` — the game itself (three.js vendored under `game/vendor/`)
+- `game/src/` — one file per job: `world` builds the city, `vehicles` the
+  cars and helicopter, `people` the crowds, `police` the MBPD, `missions`
+  the story, `hud` the screen furniture, `shots` the four cover scenes
+- `main.ts` — the hand-in program: copies `game/` + `screenshots/` to the
+  output and writes the dossier with the kit's `vendor/makefun-game.ts`
+- `screenshots/` — the four cover shots, real renders of the game
+
+Everything — city, characters, vehicles, names, story, art and sound — is
+original to this game. MIT licensed.
