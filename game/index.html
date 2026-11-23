@@ -4,78 +4,117 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
-<title>MARISOL BAY — open-world crime game</title>
+<title>MARISOL BAY — open-world crime in a golden-hour city</title>
 <style>
-  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0a1420; font-family: "Trebuchet MS", "Segoe UI", Verdana, sans-serif; }
-  #app { position: fixed; inset: 0; }
-  canvas.game { display: block; width: 100%; height: 100%; }
-  .hud { position: absolute; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.85); pointer-events: none; user-select: none; }
-  #wanted { top: 14px; left: 16px; font-size: 30px; letter-spacing: 2px; color: #ffd23e; }
-  #wanted .dim { color: rgba(255,255,255,.28); }
-  #cash { top: 52px; left: 16px; font-size: 20px; font-weight: 700; color: #7dff9a; }
-  #speed { bottom: 18px; right: 18px; font-size: 44px; font-weight: 800; text-align: right; line-height: .9; }
-  #speed small { font-size: 15px; color: #cfe3ff; display: block; letter-spacing: 2px; }
-  #objective { top: 14px; left: 50%; transform: translateX(-50%); background: rgba(5,12,24,.72); border: 1px solid rgba(255,210,62,.7); border-radius: 8px; padding: 8px 18px; font-size: 17px; font-weight: 700; text-align: center; max-width: 560px; }
-  #objective .stage { display: block; font-size: 11px; letter-spacing: 3px; color: #ffd23e; }
-  #minimap { top: 14px; right: 16px; border: 2px solid rgba(255,255,255,.55); border-radius: 50%; background: rgba(5,12,24,.6); }
-  #roster { top: 168px; right: 16px; width: 228px; background: rgba(5,12,24,.72); border: 1px solid rgba(120,180,255,.45); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; line-height: 1.5; }
-  #roster h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: 2px; color: #8fc4ff; }
-  #roster .unit { display: flex; justify-content: space-between; }
-  #roster .unit .role { color: #ffd23e; }
-  #feed { bottom: 96px; right: 16px; width: 250px; font-size: 12.5px; text-align: right; line-height: 1.6; }
-  #feed div { background: rgba(5,12,24,.55); display: inline-block; padding: 2px 8px; border-radius: 5px; margin-top: 3px; }
-  #feed .hot { color: #ff8a7a; font-weight: 700; }
-  #feed .good { color: #7dff9a; }
-  #dialog { bottom: 96px; left: 16px; width: 380px; background: rgba(5,12,24,.72); border-left: 4px solid #ffd23e; border-radius: 6px; padding: 9px 12px; font-size: 14.5px; line-height: 1.45; }
-  #dialog .who { color: #ffd23e; font-weight: 800; letter-spacing: 1px; }
-  #weapons { bottom: 18px; left: 16px; display: flex; gap: 8px; }
-  #weapons .slot { width: 52px; height: 52px; border: 2px solid rgba(255,255,255,.4); border-radius: 8px; background: rgba(5,12,24,.6); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; color: #cfe3ff; }
-  #weapons .slot.active { border-color: #ffd23e; color: #ffd23e; }
-  #weapons .slot b { font-size: 19px; }
-  #loc { bottom: 18px; left: 50%; transform: translateX(-50%); font-size: 15px; letter-spacing: 2px; color: #eaf3ff; background: rgba(5,12,24,.55); padding: 4px 14px; border-radius: 6px; }
-  #toast { top: 96px; left: 50%; transform: translateX(-50%); font-size: 20px; font-weight: 800; color: #ffd23e; display: none; }
-  #start { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(6,18,38,.25) 0%, rgba(6,18,38,.88) 78%); color: #fff; text-align: center; pointer-events: auto; z-index: 10; }
-  #start h1 { font-size: 64px; margin: 0; letter-spacing: 6px; color: #ffd23e; text-shadow: 0 4px 24px rgba(0,0,0,.8); }
-  #start h2 { font-size: 19px; font-weight: 400; margin: 6px 0 0; color: #dfeaff; letter-spacing: 2px; }
-  #start p { max-width: 620px; font-size: 15px; line-height: 1.55; color: #cfe0ff; }
-  #start button { pointer-events: auto; cursor: pointer; margin-top: 14px; font-size: 21px; font-weight: 800; letter-spacing: 2px; color: #08131f; background: #ffd23e; border: 0; border-radius: 10px; padding: 14px 42px; }
-  #start .keys { font-size: 13px; color: #9db6d8; margin-top: 16px; line-height: 1.7; }
-  #paused { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(4,10,20,.65); color: #fff; font-size: 42px; font-weight: 800; letter-spacing: 6px; z-index: 9; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0d14; font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #f2f4f6; }
+  #app, #app canvas { width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .panel { background: linear-gradient(160deg, rgba(13,18,28,0.88), rgba(13,18,28,0.72)); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.45); backdrop-filter: blur(3px); }
+
+  /* mission card */
+  #mission-card { position: absolute; top: 14px; left: 14px; width: 318px; padding: 10px 14px 11px; border-top: 4px solid #ffc93c; }
+  .mc-top { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.12em; color: #ffc93c; font-weight: 700; }
+  #mc-timer { color: #fff; background: rgba(255,255,255,0.12); padding: 1px 7px; border-radius: 5px; letter-spacing: 0.04em; }
+  #mc-title { font-size: 21px; font-weight: 900; letter-spacing: 0.02em; margin-top: 3px; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+  #mc-obj { font-size: 12.5px; color: #d7dee8; margin-top: 2px; line-height: 1.35; }
+  #mc-segs { display: flex; gap: 5px; margin: 8px 0 6px; }
+  #mc-segs i { flex: 1; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.18); }
+  #mc-segs i.done { background: #3fae6a; }
+  #mc-segs i.active { background: linear-gradient(90deg, #ffc93c, #ff7a2a); }
+  #mc-next { font-size: 12px; color: #aeb9c6; }
+  #mc-next b { color: #ffc93c; letter-spacing: 0.1em; margin-right: 4px; }
+
+  /* dispatch */
+  #dispatch { position: absolute; top: 178px; left: 14px; width: 318px; padding: 9px 12px; }
+  .dp-head { display: flex; justify-content: space-between; font-size: 11.5px; font-weight: 800; letter-spacing: 0.1em; color: #9fd8ff; }
+  #dp-count { color: #fff; }
+  .dp-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12.5px; }
+  .dp-id { width: 74px; font-weight: 700; color: #e8edf2; }
+  .dp-tag { font-size: 10px; font-weight: 900; letter-spacing: 0.06em; color: #10131a; padding: 2px 7px; border-radius: 4px; min-width: 76px; text-align: center; }
+  .dp-dist { margin-left: auto; color: #ffd98a; font-weight: 700; }
+  #dp-foot { font-size: 11px; color: #8fa0b3; margin-top: 6px; }
+
+  /* top right */
+  #top-right { position: absolute; top: 12px; right: 16px; text-align: right; }
+  #clock { font-size: 14px; font-weight: 700; color: #e8edf2; text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
+  #cash { font-size: 34px; font-weight: 900; color: #57e389; text-shadow: 0 2px 10px rgba(0,0,0,0.65); line-height: 1.05; }
+  #stars { font-size: 24px; color: #ffc93c; letter-spacing: 3px; text-shadow: 0 2px 8px rgba(0,0,0,0.7); }
+  #stars .dim { color: rgba(255,255,255,0.25); }
+  #air-note { font-size: 12px; font-weight: 900; letter-spacing: 0.08em; min-height: 15px; }
+  #respect { font-size: 11.5px; color: #d7dee8; margin-top: 3px; }
+  #respect span { color: #ffc93c; font-weight: 700; }
+
+  /* crew cards */
+  #crew-cards { position: absolute; top: 150px; right: 16px; display: flex; flex-direction: column; gap: 7px; width: 218px; }
+  .crew-card { display: flex; align-items: center; gap: 9px; padding: 6px 9px; }
+  .crew-card img { width: 40px; height: 40px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.25); }
+  .cc-name { font-size: 13px; font-weight: 900; }
+  .cc-name span { color: #9fb6c9; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; }
+  .cc-status { font-size: 10px; color: #ffd98a; letter-spacing: 0.04em; }
+  .cc-key { margin-left: auto; background: #ffc93c; color: #10131a; font-weight: 900; font-size: 12px; width: 21px; height: 21px; border-radius: 5px; display: flex; align-items: center; justify-content: center; }
+
+  /* weapon strip */
+  #weapon-strip { position: absolute; top: 390px; right: 16px; display: flex; gap: 5px; }
+  .wep { background: rgba(13,18,28,0.82); border: 1px solid rgba(255,255,255,0.14); border-radius: 7px; width: 62px; padding: 5px 6px; text-align: left; }
+  .wep.sel { border-color: #ffc93c; background: rgba(64,48,10,0.85); }
+  .wep-key { font-size: 9px; color: #9fb6c9; font-weight: 800; }
+  .wep-name { display: block; font-size: 10.5px; font-weight: 900; margin-top: 1px; }
+  .wep-ammo { font-size: 10px; color: #ffd98a; font-weight: 700; }
+
+  /* bottom left: minimap + bars */
+  #bottom-left { position: absolute; left: 14px; bottom: 14px; width: 216px; }
+  #district-label { font-size: 15px; font-weight: 900; letter-spacing: 0.06em; color: #ffd98a; text-shadow: 0 2px 8px rgba(0,0,0,0.8); margin-bottom: 5px; }
+  #minimap { width: 216px; height: 216px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.35); box-shadow: 0 8px 28px rgba(0,0,0,0.55); background: #2c3138; }
+  .bar-row { display: flex; align-items: center; gap: 7px; margin-top: 6px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; }
+  .bar-row .bar { flex: 1; height: 9px; background: rgba(255,255,255,0.16); border-radius: 5px; overflow: hidden; }
+  .bar-row .bar i { display: block; height: 100%; background: linear-gradient(90deg, #3fae6a, #57e389); width: 100%; }
+  .bar-row .bar.armor i { background: linear-gradient(90deg, #3e9be9, #7cc4ff); }
+  .bar-row b { width: 30px; text-align: right; color: #ffd98a; }
+
+  /* dialog */
+  #dialog { position: absolute; left: 50%; bottom: 118px; transform: translateX(-50%); width: 520px; max-width: 62vw; display: flex; gap: 12px; padding: 10px 14px; align-items: center; transition: opacity 0.4s; opacity: 0; }
+  #dg-face { width: 52px; height: 52px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); }
+  #dg-name { font-size: 13.5px; font-weight: 900; color: #7cc4ff; }
+  #dg-name span { color: #9fb6c9; font-size: 10.5px; letter-spacing: 0.06em; }
+  #dg-line { font-size: 14.5px; line-height: 1.35; color: #fff; }
+
+  /* feed */
+  #feed { position: absolute; right: 16px; bottom: 172px; width: 300px; text-align: right; }
+  .feed-line { display: inline-block; background: rgba(13,18,28,0.78); border-right: 3px solid #e5484d; color: #ffb3ab; font-size: 11.5px; font-weight: 800; letter-spacing: 0.04em; padding: 4px 9px; border-radius: 5px; margin-top: 5px; }
+
+  /* bottom right */
+  #bottom-right { position: absolute; right: 16px; bottom: 14px; width: 262px; }
+  #radio { font-size: 12px; color: #7cc4ff; font-weight: 700; margin-bottom: 6px; text-shadow: 0 1px 6px rgba(0,0,0,0.8); white-space: nowrap; overflow: hidden; }
+  #vehicle-card { padding: 9px 13px 10px; }
+  #veh-name { font-size: 15px; font-weight: 900; color: #ffd98a; letter-spacing: 0.03em; }
+  #speed { text-align: right; margin-top: 2px; }
+  #speed b { font-size: 44px; font-weight: 900; line-height: 0.95; text-shadow: 0 2px 10px rgba(0,0,0,0.6); }
+  #speed span { font-size: 13px; font-weight: 800; color: #9fb6c9; margin-left: 5px; }
+
+  #banner { position: absolute; top: 24%; left: 50%; transform: translateX(-50%); font-size: 44px; font-weight: 900; letter-spacing: 0.06em; color: #ffc93c; text-shadow: 0 4px 22px rgba(0,0,0,0.8); opacity: 0; transition: opacity 0.4s; }
+  #hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); font-size: 11px; color: rgba(255,255,255,0.55); letter-spacing: 0.05em; text-shadow: 0 1px 4px rgba(0,0,0,0.9); }
+
+  /* start screen */
+  #start-screen { position: fixed; inset: 0; z-index: 9; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 65%, rgba(255,122,45,0.25), rgba(6,8,16,0.88) 70%); cursor: pointer; }
+  #start-screen h1 { font-size: 74px; font-weight: 900; letter-spacing: 0.04em; background: linear-gradient(180deg, #ffe9b0, #ff7a2a); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; filter: drop-shadow(0 6px 24px rgba(0,0,0,0.6)); }
+  #start-screen p { margin-top: 8px; font-size: 16px; color: #d7dee8; }
+  #start-screen .go { margin-top: 26px; background: #ffc93c; color: #10131a; font-weight: 900; padding: 12px 34px; border-radius: 9px; font-size: 17px; letter-spacing: 0.05em; }
+  #start-screen .keys { margin-top: 18px; font-size: 12px; color: rgba(255,255,255,0.6); }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<div id="app">
-  <div id="wanted" class="hud">○○○○○</div>
-  <div id="cash" class="hud">$ 0</div>
-  <div id="objective" class="hud"><span class="stage">MARISOL BAY</span><span id="objectiveText">Press START to play</span></div>
-  <canvas id="minimap" class="hud" width="150" height="150"></canvas>
-  <div id="roster" class="hud"><h3>MBPD DISPATCH</h3><div id="rosterBody">No units assigned.</div></div>
-  <div id="feed" class="hud"></div>
-  <div id="dialog" class="hud"><span class="who">VERA</span> — <span id="dialogText">Dax. One last job, then we're done. Get to the Azure Pearl.</span></div>
-  <div id="weapons" class="hud">
-    <div class="slot active" data-w="0"><b>🔫</b>PISTOL</div>
-    <div class="slot" data-w="1"><b>💥</b>SMG</div>
-    <div class="slot" data-w="2"><b>🧨</b>LAUNCHER</div>
-  </div>
-  <div id="speed" class="hud">0<small>MPH</small></div>
-  <div id="loc" class="hud">THE STRAND</div>
-  <div id="toast" class="hud"></div>
-  <div id="paused">PAUSED</div>
-  <div id="start">
-    <h1>MARISOL BAY</h1>
-    <h2>AN OPEN-WORLD CRIME GAME</h2>
-    <p>One last job. Steal the Vantara GT from the Azure Pearl casino, outrun the
-    Marisol Bay Police Department through the Strand, Downtown and the Harbor, and
-    deliver the car to Pier 9. Your crew is on the channel: Vera the fixer, Mako
-    the driver, Gus the mechanic, Ivy the lookout.</p>
-    <button id="playBtn">▶&nbsp; START THE JOB</button>
-    <div class="keys">WASD drive / walk &nbsp;·&nbsp; SHIFT nitro &nbsp;·&nbsp; SPACE handbrake &nbsp;·&nbsp; E enter / exit car<br>
-    F steal car &nbsp;·&nbsp; Q weapon &nbsp;·&nbsp; Click fire &nbsp;·&nbsp; R restart mission &nbsp;·&nbsp; P pause &nbsp;·&nbsp; H save</div>
-  </div>
+<div id="app"></div>
+<div id="hud"></div>
+<div id="start-screen">
+  <h1>MARISOL BAY</h1>
+  <p>One car. One crew. One sunset to outrun.</p>
+  <div class="go">START THE JOB</div>
+  <div class="keys">WASD drive / walk · E enter &amp; exit cars · SHIFT nitro · SPACE handbrake</div>
 </div>
-<script type="module" src="./src/main.js"></script>
+<script type="module" src="src/main.js"></script>
 </body>
 </html>

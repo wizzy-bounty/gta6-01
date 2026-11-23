@@ -1,44 +1,28 @@
-// MARISOL BAY — tiny static file server for local playtesting.
-// Usage: node serve.ts [--port 8080]
-// Serves the repository root so game/ is reachable at /game/ and the game
-// itself at /game/index.html. Standard library only.
-
+// MARISOL BAY — tiny static file server for local preview.
+// Usage: node serve.ts  →  http://localhost:8077/game/
 import { createServer } from 'node:http';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, extname, normalize } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
-const port = Number(process.argv[process.argv.indexOf('--port') + 1] ?? 8080);
+const root = new URL('.', import.meta.url).pathname;
+const port = Number(process.env.PORT || 8077);
 
-const MIME = {
-  '.html': 'text/html',
-  '.js': 'text/javascript',
-  '.mjs': 'text/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
-  '.png': 'image/png',
+const types: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
   '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
-  '.ts': 'text/plain',
+  '.png': 'image/png',
+  '.css': 'text/css; charset=utf-8',
 };
 
-const server = createServer((req, res) => {
-  const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  const rel = normalize(urlPath === '/' ? '/game/index.html' : urlPath).replace(/^[/\\]+/, '');
-  // Try the repository root first, then game/ (so /index.html serves the game).
-  let file = join(here, rel);
-  if (!existsSync(file) || !statSync(file).isFile()) file = join(here, 'game', rel);
-  if (!file.startsWith(here) || !existsSync(file) || !statSync(file).isFile()) {
-    res.writeHead(404, { 'content-type': 'text/plain' });
-    res.end('not found\n');
-    return;
-  }
-  res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
-  createReadStream(file).pipe(res);
-});
-
-server.listen(port, '127.0.0.1', () => {
-  console.log(`MARISOL BAY serving at http://127.0.0.1:${port}/game/index.html`);
-});
+createServer((req, res) => {
+  const url = new URL(req.url || '/', `http://localhost:${port}`);
+  let path = normalize(join(root, decodeURIComponent(url.pathname)));
+  if (!path.startsWith(root)) { res.writeHead(403); res.end('forbidden'); return; }
+  if (existsSync(path) && statSync(path).isDirectory()) path = join(path, 'index.html');
+  if (!existsSync(path)) { res.writeHead(404); res.end('not found'); return; }
+  res.writeHead(200, { 'content-type': types[extname(path)] || 'application/octet-stream' });
+  res.end(readFileSync(path));
+}).listen(port, () => console.log(`MARISOL BAY preview at http://localhost:${port}/game/`));

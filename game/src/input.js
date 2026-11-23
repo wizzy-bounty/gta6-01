@@ -1,38 +1,34 @@
-// MARISOL BAY — keyboard and mouse input state.
+// MARISOL BAY — keyboard input state.
+export const keys = Object.create(null);
 
-export class Input {
-  constructor() {
-    this.keys = new Set();
-    this.mouseDown = false;
-    this.mouseDX = 0;
-    this._onKeyDown = (e) => {
-      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
-      this.keys.add(e.code);
-      this._presses.add(e.code);
-    };
-    this._onKeyUp = (e) => this.keys.delete(e.code);
-    this._onMouseDown = (e) => { this.mouseDown = true; this._presses.add('Mouse0'); };
-    this._onMouseUp = () => { this.mouseDown = false; };
-    this._onMouseMove = (e) => { this.mouseDX += e.movementX || 0; };
-    this._presses = new Set();
-    window.addEventListener('keydown', this._onKeyDown);
-    window.addEventListener('keyup', this._onKeyUp);
-    window.addEventListener('mousedown', this._onMouseDown);
-    window.addEventListener('mouseup', this._onMouseUp);
-    window.addEventListener('mousemove', this._onMouseMove);
-  }
-
-  down(...codes) {
-    return codes.some((c) => this.keys.has(c));
-  }
-
-  // True once per physical press; consumed by the game loop each frame.
-  pressed(code) {
-    return this._presses.has(code);
-  }
-
-  endFrame() {
-    this._presses.clear();
-    this.mouseDX = 0;
-  }
+export function initInput() {
+  addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+  });
+  addEventListener('keyup', (e) => { keys[e.code] = false; });
+  addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 }
+
+export const input = {
+  get throttle() { return (keys.KeyW || keys.ArrowUp) ? 1 : 0; },
+  get brake() { return (keys.KeyS || keys.ArrowDown) ? 1 : 0; },
+  get steer() {
+    let s = 0;
+    if (keys.KeyA || keys.ArrowLeft) s -= 1;
+    if (keys.KeyD || keys.ArrowRight) s += 1;
+    return s;
+  },
+  get handbrake() { return !!keys.Space; },
+  get nitro() { return !!(keys.ShiftLeft || keys.ShiftRight); },
+  get enter() { return !!keys.KeyE; },
+  moveAxis() {
+    let x = 0, z = 0;
+    if (keys.KeyW || keys.ArrowUp) z -= 1;
+    if (keys.KeyS || keys.ArrowDown) z += 1;
+    if (keys.KeyA || keys.ArrowLeft) x -= 1;
+    if (keys.KeyD || keys.ArrowRight) x += 1;
+    const len = Math.hypot(x, z) || 1;
+    return { x: x / len, z: z / len, active: x !== 0 || z !== 0 };
+  },
+};

@@ -1,149 +1,137 @@
-// MARISOL BAY — the MBPD: interceptor cruisers that ram and box the player
-// in, plus the helicopter that joins at wanted 3 with a sweeping searchlight.
+// MARISOL BAY — MBPD: pursuit cruisers that chase and ram, static
+// roadblock pairs, and AIR-1, a helicopter with a real spotlight cone.
+// Each unit reports a dispatch status tag for the HUD roster.
 import * as THREE from 'three';
-import { UNIT_NAMES } from './config.js';
-import { mulberry32, pick, clamp, angleLerp, dist2 } from './random.js';
-import { makeCarMesh } from './vehicles.js';
-import { collideCircle } from './world.js';
+import { buildPoliceCar, CarBody } from './vehicles.js';
+import { makeGlowSprite } from './textures.js';
 
-export class Police {
-  constructor(scene, colliders) {
-    this.scene = scene;
-    this.colliders = colliders;
-    this.cruisers = [];
-    this.rng = mulberry32(77);
-    this.heli = null;
-    this.heliLight = null;
-    this.heliCone = null;
-    this.flashT = 0;
-    this.units = UNIT_NAMES;
+export class Cruiser {
+  constructor(scene, id) {
+    this.group = buildPoliceCar();
+    this.body = new CarBody(this.group);
+    this.id = id;
+    this.active = false;
+    this.group.visible = false;
+    this.tag = 'STANDBY';
+    this.stuck = 0;
+    scene.add(this.group);
   }
-
-  desiredCount(wanted) {
-    return Math.min(wanted, 5);
+  spawnNear(target, rng, dist = 46) {
+    const a = rng.range(0, Math.PI * 2);
+    const x = THREE.MathUtils.clamp(target.x + Math.sin(a) * dist, -246, 246);
+    const z = THREE.MathUtils.clamp(target.z + Math.cos(a) * dist, -246, 246);
+    this.body.place(x, z, Math.atan2(-(target.x - x), -(target.z - z)));
+    this.active = true;
+    this.group.visible = true;
+    this.tag = 'CLOSING IN';
   }
-
-  // Spawn a cruiser a short way ahead of the player, on a road.
-  spawnCruiser(px, pz, heading) {
-    const mesh = makeCarMesh(0x101418, { police: true });
-    const a = this.rng() * Math.PI * 2;
-    const x = clamp(px + Math.sin(a) * 55, -200, 200);
-    const z = clamp(pz + Math.cos(a) * 55, -200, 200);
-    mesh.position.set(x, 0, z);
-    this.scene.add(mesh);
-    const idx = this.cruisers.length;
-    this.cruisers.push({
-      mesh, x, z, heading: heading + Math.PI, speed: 0,
-      name: this.units[idx % this.units.length][0],
-      role: this.units[idx % this.units.length][1],
-      wobble: this.rng() * 10,
-    });
+  hide() { this.active = false; this.group.visible = false; this.tag = 'STANDBY'; }
+  update(dt, target, t) {
+    if (!this.active) return;
+    const b = this.body;
+    const dx = target.x - b.pos.x, dz = target.z - b.pos.z;
+    const dist = Math.hypot(dx, dz);
+    const want = Math.atan2(-dx, -dz);
+    let diff = want - b.heading;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    const steer = THREE.MathUtils.clamp(diff * 1.6, -1, 1);
+    const throttle = dist > 7 ? 1 : 0.35;
+    b.drive(dt, throttle, steer, { maxF: 37 });
+    // gentle separation from the target so they flank/ram instead of merging
+    b.integrate(dt);
+    if (dist < 4.2) { b.speed *= 0.55; this.tag = 'RAMMING'; }
+    else if (dist < 13) this.tag = 'RAMMING';
+    else if (dist < 30) this.tag = 'FLANKING';
+    else this.tag = 'CLOSING IN';
+    // light bar strobing
+    const glows = this.group.userData.lightGlows;
+    if (glows) {
+      const ph = Math.floor(t * 6 + this.id.length) % 2;
+      glows[0].material.opacity = ph === 0 ? 0.95 : 0.15;
+      glows[1].material.opacity = ph === 0 ? 0.15 : 0.95;
+    }
+    this.dist = dist;
   }
+}
 
-  spawnHeli() {
-    if (this.heli) return;
+export class Roadblock {
+  constructor(scene) {
+    this.units = [buildPoliceCar(), buildPoliceCar()];
+    for (const u of this.units) { u.visible = false; scene.add(u); }
+    this.active = false; this.x = 0; this.z = 0;
+  }
+  place(x, z, heading) {
+    this.x = x; this.z = z; this.active = true;
+    const px = Math.cos(heading), pz = -Math.sin(heading);
+    this.units[0].position.set(x + px * 3.4, 0, z + pz * 3.4);
+    this.units[0].rotation.y = heading + 0.5;
+    this.units[1].position.set(x - px * 3.4, 0, z - pz * 3.4);
+    this.units[1].rotation.y = heading - 0.5;
+    for (const u of this.units) u.visible = true;
+  }
+  hide() { this.active = false; for (const u of this.units) u.visible = false; }
+}
+
+export class Helicopter {
+  constructor(scene) {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.6, 6.4), new THREE.MeshLambertMaterial({ color: 0x1c2733 }));
-    body.castShadow = true;
-    g.add(body);
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 5.4), new THREE.MeshLambertMaterial({ color: 0x1c2733 }));
-    tail.position.set(0, 0.3, -5.4);
-    g.add(tail);
-    const rotor = new THREE.Mesh(new THREE.BoxGeometry(11, 0.12, 0.7), new THREE.MeshLambertMaterial({ color: 0x0c0f14 }));
-    rotor.position.y = 1.1;
-    g.add(rotor);
-    const tailRotor = new THREE.Mesh(new THREE.BoxGeometry(0.12, 3.2, 0.5), new THREE.MeshLambertMaterial({ color: 0x0c0f14 }));
-    tailRotor.position.set(0.4, 0.4, -7.6);
-    g.add(tailRotor);
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(3.44, 0.4, 6.44), new THREE.MeshBasicMaterial({ color: 0xffd23e }));
-    stripe.position.y = -0.2;
-    g.add(stripe);
-    const spot = new THREE.SpotLight(0xfff2b0, 900, 160, 0.42, 0.55, 1.2);
-    spot.position.set(0, -0.8, 0);
-    g.add(spot);
-    g.add(spot.target);
-    const cone = new THREE.Mesh(
-      new THREE.ConeGeometry(13, 46, 20, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false }),
-    );
-    cone.position.y = -24;
-    cone.rotation.x = Math.PI;
-    g.add(cone);
-    this.scene.add(g);
-    this.heli = g;
-    this.heliLight = spot;
-    this.heliCone = cone;
-    this.heliRotor = rotor;
-    this.heliTarget = spot.target;
-  }
-
-  removeHeli() {
-    if (!this.heli) return;
-    this.scene.remove(this.heli);
-    this.heli = null;
-    this.heliLight = null;
-    this.heliCone = null;
-  }
-
-  update(dt, t, px, pz, wanted, playerSpeed) {
-    // match cruiser count to wanted level
-    const want = this.desiredCount(wanted);
-    while (this.cruisers.length < want) this.spawnCruiser(px, pz, 0);
-    while (this.cruisers.length > want) {
-      const c = this.cruisers.pop();
-      this.scene.remove(c.mesh);
+    const bodyM = new THREE.MeshStandardMaterial({ color: 0x1d2739, roughness: 0.35, metalness: 0.6 });
+    const glassM = new THREE.MeshStandardMaterial({ color: 0x0e1420, roughness: 0.1, metalness: 0.7 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(1.6, 18, 14), bodyM);
+    body.scale.set(1, 0.82, 1.5); body.castShadow = true; g.add(body);
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(1.05, 14, 10), glassM);
+    nose.position.set(0, -0.1, -1.3); nose.scale.set(0.9, 0.7, 0.9); g.add(nose);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 4.6), bodyM);
+    tail.position.set(0, 0.25, 3.4); g.add(tail);
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.1, 0.7), bodyM);
+    fin.position.set(0, 0.6, 5.6); g.add(fin);
+    const skidM = new THREE.MeshStandardMaterial({ color: 0x0c0d10, roughness: 0.5, metalness: 0.6 });
+    for (const sx of [-1, 1]) {
+      const skid = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 3.0), skidM);
+      skid.position.set(sx * 1.05, -1.25, 0.1); g.add(skid);
+      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.7, 0.1), skidM);
+      strut.position.set(sx * 0.9, -0.85, -0.6); g.add(strut);
+      const strut2 = strut.clone(); strut2.position.z = 0.9; g.add(strut2);
     }
-    this.flashT += dt;
-    const flash = Math.sin(this.flashT * 14) > 0;
-    for (const c of this.cruisers) {
-      // pursue: steer toward the player, ram speed scales with wanted
-      const d = dist2(c.x, c.z, px, pz);
-      const targetHeading = Math.atan2(px - c.x, pz - c.z);
-      c.heading = angleLerp(c.heading, targetHeading + Math.sin(t * 0.7 + c.wobble) * 0.18, Math.min(1, dt * 1.6));
-      const top = 24 + wanted * 4.5 + Math.min(playerSpeed, 20) * 0.35;
-      c.speed = Math.min(top, c.speed + 18 * dt);
-      const nx = c.x + Math.sin(c.heading) * c.speed * dt;
-      const nz = c.z + Math.cos(c.heading) * c.speed * dt;
-      const hit = collideCircle(this.colliders, nx, nz, 2.1);
-      if (hit.hit) {
-        c.heading += Math.PI * 0.5;
-        c.speed *= 0.4;
-      } else {
-        c.x = clamp(nx, -204, 204);
-        c.z = clamp(nz, -204, 204);
-      }
-      c.mesh.position.set(c.x, 0, c.z);
-      c.mesh.rotation.y = c.heading;
-      for (const w of c.mesh.userData.wheels) w.rotation.x += c.speed * dt * 2.4;
-      if (c.mesh.userData.lightBar) {
-        c.mesh.userData.lightBar.material.color.setHex(flash ? 0xff2233 : 0x2233ff);
-      }
-      c.dist = Math.round(d);
-    }
-    // helicopter: close orbit so it stays in frame, lower and visible
-    if (wanted >= 3) {
-      this.spawnHeli();
-      const a = t * 0.22;
-      const hx = px + Math.sin(a) * 24;
-      const hz = pz + Math.cos(a) * 24;
-      this.heli.position.set(hx, 42 + Math.sin(t * 0.8) * 3, hz);
-      this.heli.rotation.y = Math.atan2(px - hx, pz - hz);
-      this.heliRotor.rotation.y += dt * 22;
-      this.heliTarget.position.set(px, 0, pz);
-      // sweep the cone a little ahead of the player
-      this.heliCone.rotation.z = Math.sin(t * 0.5) * 0.12;
-    } else {
-      this.removeHeli();
-    }
+    this.rotor = new THREE.Mesh(new THREE.BoxGeometry(11.5, 0.06, 0.55),
+      new THREE.MeshStandardMaterial({ color: 0x0a0a0c, roughness: 0.4, transparent: true, opacity: 0.85 }));
+    this.rotor.position.y = 1.5; g.add(this.rotor);
+    this.tailRotor = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.7, 0.3), this.rotor.material);
+    this.tailRotor.position.set(0.28, 0.6, 5.6); g.add(this.tailRotor);
+    // spotlight: translucent cone + real SpotLight + ground glow disc
+    const coneMat = new THREE.MeshBasicMaterial({
+      color: 0xfff3c0, transparent: true, opacity: 0.16,
+      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+    });
+    this.cone = new THREE.Mesh(new THREE.ConeGeometry(7.5, 30, 24, 1, true), coneMat);
+    this.cone.position.y = -15.5; g.add(this.cone);
+    this.spot = new THREE.SpotLight(0xfff0bb, 0, 90, 0.42, 0.5, 0.6);
+    g.add(this.spot); g.add(this.spot.target);
+    this.poolGlow = makeGlowSprite(0xffedb5, 15, 0.5);
+    this.poolGlow.position.y = -29.2; g.add(this.poolGlow);
+    const beacon = makeGlowSprite(0xff3020, 3.2, 0.9); beacon.position.set(0, 0.4, 5.6); g.add(beacon);
+    this.group = g;
+    this.active = false; g.visible = false;
+    scene.add(g);
   }
-
-  roster() {
-    return this.cruisers.map((c) => ({ name: c.name, role: c.role, dist: c.dist ?? 0 }));
+  update(dt, target, t) {
+    if (!this.active) return;
+    const g = this.group;
+    // orbit slightly offset behind/above the target
+    const ox = target.x - Math.sin(target.heading || 0) * 6, oz = target.z - Math.cos(target.heading || 0) * 6;
+    g.position.x += (ox - g.position.x) * Math.min(1, dt * 1.6);
+    g.position.z += (oz - g.position.z) * Math.min(1, dt * 1.6);
+    g.position.y = 30 + Math.sin(t * 0.7) * 1.2;
+    g.rotation.y = Math.atan2(target.x - g.position.x, target.z - g.position.z) + Math.PI;
+    this.rotor.rotation.y += dt * 28;
+    this.tailRotor.rotation.x += dt * 34;
+    this.spot.target.position.set(0, -30, 0);
+    this.tag = 'SPOTLIGHT';
+    this.dist = Math.hypot(target.x - g.position.x, target.z - g.position.z);
   }
-
-  clear() {
-    for (const c of this.cruisers) this.scene.remove(c.mesh);
-    this.cruisers = [];
-    this.removeHeli();
+  setLit(on) {
+    this.spot.intensity = on ? 2600 : 0;
+    this.cone.visible = on; this.poolGlow.visible = on;
   }
 }

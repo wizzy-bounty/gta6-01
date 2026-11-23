@@ -1,96 +1,92 @@
-// MARISOL BAY — the three-stage story mission: objectives, the gold beacon,
-// crew dialogue beats and rewards.
-import * as THREE from 'three';
-import { MISSIONS } from './config.js';
-import { dist2 } from './random.js';
+// MARISOL BAY — the job: a 3-stage mission state machine.
+// 1 LIFT THE GT → 2 LOSE THE HEAT → 3 MAKE THE PIER → DONE.
+import { PLACES } from './config.js';
 
-export class MissionDirector {
-  constructor(scene) {
-    this.scene = scene;
-    this.stage = 0; // 0 = not started
+export const STAGES = [
+  { key: 'lift',    title: 'LIFT THE GT',    objective: 'Steal the Vantara GT from the Azure Pearl porte-cochère', next: 'Get in the GT — driver’s side' },
+  { key: 'heat',    title: 'LOSE THE HEAT',  objective: 'Break the MBPD line of sight and let the stars cool',     next: 'Stay out of sight — no unit within 26 m' },
+  { key: 'pier',    title: 'MAKE THE PIER',  objective: 'Deliver the Vantara GT to Gus at Pier 9, Harborfront',    next: 'Reach the beacon at Pier 9' },
+  { key: 'done',    title: 'JOB DONE',       objective: 'The GT is on the boat. The crew gets paid.',               next: 'Free roam — Marisol Bay is yours' },
+];
+
+const DIALOG = {
+  start:   { who: 'vera', line: 'GT is under the Azure Pearl canopy, keys in it. Walk in calm, drive out loud.' },
+  lift:    { who: 'ivy',  line: 'Plates just pinged a camera. Half the MBPD is rolling — move, Dax!' },
+  spotted: { who: 'mako', line: 'They’re at ramming distance! Shake them before my paint job is confetti!' },
+  cooling: { who: 'vera', line: 'Line of sight broken. Stay dark, stay slow — let the stars bleed off.' },
+  pier:    { who: 'gus',  line: 'Boat’s loaded and impatient, kid. Pier 9, berth four — bring me that GT.' },
+  done:    { who: 'vera', line: 'Payment cleared. Drinks at Casa Azul — you earned the sunset, wheelman.' },
+  crash:   { who: 'mako', line: 'I felt that from here! That GT is a classic, not a bumper car!' },
+};
+
+export class Mission {
+  constructor() {
+    this.stage = 0;               // index into STAGES
+    this.timer = 0;               // stage 3 countdown
+    this.cool = 0;                // stage 2 out-of-sight accumulation
+    this.started = false;
     this.done = false;
-    this.cash = 0;
-    this.dialogIdx = 0;
-    this.dialogTimer = 0;
-    // gold beacon: a glowing column + pulsing ground ring at the objective
-    const colMat = new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false });
-    this.beacon = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 60, 16, 1, true), colMat);
-    this.beacon.visible = false;
-    scene.add(this.beacon);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
-    this.ring = new THREE.Mesh(new THREE.RingGeometry(2.4, 3.2, 32), ringMat);
-    this.ring.rotation.x = -Math.PI / 2;
-    this.ring.visible = false;
-    scene.add(this.ring);
+    this.events = [];
+    this.saidSpotted = false;
   }
-
-  current() {
-    return MISSIONS[this.stage - 1] || null;
+  say(key) { this.events.push({ type: 'dialog', ...DIALOG[key] }); }
+  feed(text) { this.events.push({ type: 'feed', text }); }
+  begin() {
+    if (this.started) return;
+    this.started = true;
+    this.say('start');
+    this.feed('JOB STARTED — LIFT THE VANTARA GT');
   }
+  drainEvents() { const e = this.events; this.events = []; return e; }
 
-  start() {
-    this.stage = 1;
-    this.done = false;
-    this.dialogIdx = 0;
-    this.dialogTimer = 0;
-    const m = this.current();
-    this.beacon.position.set(m.target.x, 30, m.target.z);
-    this.beacon.visible = true;
-    this.ring.position.set(m.target.x, 0.1, m.target.z);
-    this.ring.visible = true;
-    return m;
-  }
-
-  restart() {
-    this.start();
-    return this.current();
-  }
-
-  // Returns 'advanced' | 'complete' | null. Emits dialogue through the callback.
-  update(dt, t, px, pz, onDialog, onEvent) {
-    const m = this.current();
-    if (!m || this.done) return null;
-    this.dialogTimer += dt;
-    // drip-feed the stage's dialogue lines
-    if (this.dialogIdx < m.dialog.length && this.dialogTimer > 4 + this.dialogIdx * 7) {
-      const [who, line] = m.dialog[this.dialogIdx];
-      onDialog(who, line);
-      this.dialogIdx++;
-    }
-    // beacon pulse
-    const s = 1 + Math.sin(t * 3) * 0.12;
-    this.ring.scale.set(s, s, 1);
-    this.beacon.material.opacity = 0.16 + Math.sin(t * 3) * 0.06;
-    if (dist2(px, pz, m.target.x, m.target.z) < 9) {
-      this.cash += m.reward;
-      onEvent(`STAGE ${m.stage} COMPLETE — +$${m.reward}`, 'good');
-      if (this.stage >= MISSIONS.length) {
-        this.done = true;
-        this.beacon.visible = false;
-        this.ring.visible = false;
-        return 'complete';
+  // ctx: { playerPos, drivingHero, wanted, setWanted(n), nearestPolice }
+  update(dt, ctx) {
+    if (!this.started || this.done) return;
+    if (this.stage === 0) {
+      const d = Math.hypot(ctx.playerPos.x - PLACES.gtSpot.x, ctx.playerPos.z - PLACES.gtSpot.z);
+      if (ctx.drivingHero) {
+        this.stage = 1;
+        ctx.setWanted(3);
+        this.say('lift');
+        this.feed('WANTED LEVEL 3 — MBPD RESPONDING');
+      } else if (d < 30 && !this._nearSaid) { this._nearSaid = true; }
+    } else if (this.stage === 1) {
+      if (ctx.nearestPolice < 15 && !this.saidSpotted) { this.saidSpotted = true; this.say('spotted'); }
+      if (ctx.nearestPolice > 26) {
+        this.cool += dt;
+        if (this.cool > 2 && !this._coolSaid) { this._coolSaid = true; this.say('cooling'); }
+        if (this.cool >= 9) {
+          this.stage = 2;
+          this.timer = 150;
+          ctx.setWanted(1);
+          this.say('pier');
+          this.feed('HEAT LOST — DELIVER THE GT TO PIER 9');
+        }
+      } else {
+        this.cool = Math.max(0, this.cool - dt * 2);
       }
-      this.stage++;
-      this.dialogIdx = 0;
-      this.dialogTimer = 0;
-      const next = this.current();
-      this.beacon.position.set(next.target.x, 30, next.target.z);
-      this.ring.position.set(next.target.x, 0.1, next.target.z);
-      return 'advanced';
+    } else if (this.stage === 2) {
+      this.timer -= dt;
+      if (this.timer <= 0) { // out of time: heat returns, timer resets
+        this.timer = 150;
+        ctx.setWanted(3);
+        this.feed('THE BOAT WAITED — HEAT IS BACK, MOVE!');
+      }
+      const d = Math.hypot(ctx.playerPos.x - PLACES.pier.x, ctx.playerPos.z - PLACES.pier.z);
+      if (ctx.drivingHero && d < 12) {
+        this.stage = 3;
+        this.done = true;
+        ctx.setWanted(0);
+        this.say('done');
+        this.feed('DELIVERED — +$18,450 · RESPECT +120');
+      }
     }
+  }
+
+  beaconTarget() {
+    if (this.stage === 0) return PLACES.gtSpot;
+    if (this.stage === 2) return PLACES.pier;
     return null;
   }
-
-  objectiveText() {
-    const m = this.current();
-    if (!m) return 'Press START to play';
-    if (this.done) return 'JOB DONE — the GT is at Pier 9. Vera is counting the money.';
-    return m.objective;
-  }
-
-  stageTitle() {
-    const m = this.current();
-    if (!m) return 'MARISOL BAY';
-    return this.done ? 'JOB COMPLETE' : m.title;
-  }
+  current() { return STAGES[Math.min(this.stage, STAGES.length - 1)]; }
 }
