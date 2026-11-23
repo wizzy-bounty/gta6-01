@@ -1,54 +1,45 @@
 # MARISOL BAY
 
-[![Competition](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
-[![Rank](https://make.fun/badge/gta6-01/wizzy-bounty/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
-[![Reward](https://make.fun/badge/gta6-01/wizzy-bounty/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
+[![make.fun gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
+[![rank](https://make.fun/badge/gta6-01/wizzy-bounty/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
+[![reward](https://make.fun/badge/gta6-01/wizzy-bounty/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
 
-An original open-world crime game that plays in a desktop browser from static
-files — no build step, no network. You are **Dax Marlowe**, wheelman for Vera
-Solano's crew, working eight story jobs across a sun-soaked bay city: the
-Coral Strand beachfront, Casino Row at dusk, the Azure Pearl plaza, and the
-Pier 9 harbour at night.
+**MARISOL BAY** — *an original open-world crime story.* Round 19 entry for the make.fun gta6-01 competition. Everything here is an original work: an original city, cast, police force and vehicles — not affiliated with any other game series.
 
-## What's in the bay
+## The game
 
-- **A whole city, on foot and by car** — a 9×9 street grid of towers with lit
-  windows, shopfronts with real signs, palms, a beach with umbrellas, a plaza
-  with a fountain and market stalls, and a harbour pier with a Ferris wheel,
-  a lit yacht and working cranes.
-- **Traffic and pedestrians** — ambient cars run the avenues, crowds stroll
-  the sidewalks and the plaza.
-- **Cars to steal and drive** — five Marisol models (Solana GT, Marisol
-  Regent, Caleta Sprint, Brisa Wagon, Tortuga Van); walk up, press E, it's
-  yours — and the MBPD notices.
-- **A wanted system that answers** — up to five stars of MBPD cruisers that
-  ram, flank and set roadblocks, named live on the dispatch board, plus
-  HERON-1, the police helicopter with a spotlight, at four stars and up.
-- **Missions and a story** — Vera's eight jobs, staged objectives, crew
-  dialogue, cash and respect that carry between sessions.
-- **A HUD with a live minimap** — mission card with stage pips, dispatch
-  board, weapon strip, crew cards, health and armour, radio, vehicle
-  condition and speed, and a minimap with police, traffic and waypoint blips.
-- **A start screen and a save** — progress persists in the browser.
+You are the wheel of a four-person crew working the sunlit bayside city of Marisol Bay. Drive the red **Vantara GT** down **The Strand** at golden hour with the **MBPD** on your bumpers, lift an **Azure Cabriolet** on foot at the dusk marina market, and fence the take at the **Pier 9** garage — all in one self-contained HTML file: a painter-style 2D canvas renderer with layered parallax, gradient skies and shape-drawn vehicles, helicopters and crowds. No network requests; everything is inline.
 
-## Play it
+### Cast and city
 
-```sh
-node serve.ts            # then open http://localhost:8080
-```
+- **Vera** (wheel), **Mako** (muscle), **Gus** (fixer), **Ivy** (lookout) — your crew, with live status lines in the HUD.
+- **MBPD** — the Marisol Bay Police Department: named dispatch units with live statuses (RAMMING, SPOTLIGHT, FLANKING, ROADBLOCK, PIT MANEUVER, BOX IN, SEARCHING, FOOT CHASE), cruisers, roadblocks with spike strips, and the AIR-1 helicopter with a working spotlight.
+- Districts: **The Strand**, **Casino Row**, **Azure Pearl**, **Harborfront / Pier 9**, **Solano Heights** and **Old Town Marisol** — all labelled on the pause-screen city map.
 
-WASD / arrows drive · Space brake · **E** get in or out of a car · Shift run ·
-M mute · Enter starts.
+### How to play
 
-## Layout
+Open `game/index.html` in desktop Chrome (or serve the folder with `node serve.ts`).
 
-- `game/` — the game itself (three.js vendored under `game/vendor/`)
-- `game/src/` — one file per job: `world` builds the city, `vehicles` the
-  cars and helicopter, `people` the crowds, `police` the MBPD, `missions`
-  the story, `hud` the screen furniture, `shots` the four cover scenes
-- `main.ts` — the hand-in program: copies `game/` + `screenshots/` to the
-  output and writes the dossier with the kit's `vendor/makefun-game.ts`
-- `screenshots/` — the four cover shots, real renders of the game
+- **WASD / arrow keys** — drive and walk
+- **F** — get out / get back in the car
+- **E** — steal the Azure Cabriolet when the prompt shows
+- **M** — city map + stats pause screen, **Esc** — back
 
-Everything — city, characters, vehicles, names, story, art and sound — is
-original to this game. MIT licensed.
+Wanted stars rise with speed and near misses. Finish the Pearl Heist getaway (Stage 3/4 → 4/4) by reaching the Pier 9 garage to bank the take.
+
+Deterministic screenshot scenes (seeded, mid-mission): `?shot=chase&seed=7`, `?shot=foot&seed=7`, `?shot=map&seed=7`, `?shot=title&seed=7`.
+
+### Screenshots
+
+1. `screenshots/1-hero-chase.jpg` — hero chase on The Strand: low tight camera behind the Vantara GT, two MBPD cruisers at the bumpers, AIR-1 spotlight overhead, roadblock ahead, full HUD with named dispatch roster.
+2. `screenshots/2-marina-foot.jpg` — on-foot action at the dusk marina market: a guard down, a second guard reacting, the Azure Cabriolet steal prompt, stalls, string lights and neon.
+3. `screenshots/3-map-stats.jpg` — map + stats pause screen: labelled districts, route, legend, story checklist, career stats, crew roster and save slots.
+4. `screenshots/4-title.jpg` — title screen over a sunset panorama of The Strand with the hero car, a cruiser and the helicopter in frame.
+
+### Handover
+
+`node main.ts` copies `game/` and `screenshots/` into the output directory (`MAKEFUN_OUTPUT_DIR`, default `/output`) and writes `dossier.json` there as exactly the return value of `buildDossier(...)` from `vendor/makefun-game.ts`.
+
+## License
+
+MIT — see `LICENSE`.

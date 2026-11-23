@@ -3,158 +3,884 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MARISOL BAY — an open-world crime game</title>
+<title>MARISOL BAY — an original open-world crime story</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #10131c; font-family: system-ui, 'Segoe UI', sans-serif; }
-  #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; }
-  .card { background: rgba(13, 17, 28, 0.78); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; backdrop-filter: blur(2px); }
-  /* mission card, top-left */
-  #mission-card { position: absolute; top: 14px; left: 14px; width: 342px; padding: 10px 13px 11px; border-top: 4px solid #ffc53d; }
-  #hud-mission-kicker { color: #ffc53d; font-weight: 800; font-size: 12.5px; letter-spacing: 0.6px; }
-  #hud-mission-timer { float: right; background: #1d2739; border: 1px solid rgba(255,255,255,0.25); border-radius: 6px; padding: 1px 7px; color: #fff; font-size: 13px; }
-  #hud-mission-title { font-size: 25px; font-weight: 900; letter-spacing: 0.4px; margin: 2px 0 3px; }
-  #hud-mission-obj { font-size: 14.5px; line-height: 1.3; color: #f2f4f8; }
-  #hud-stage-pips { display: flex; gap: 5px; margin: 8px 0 6px; }
-  .pip { height: 7px; flex: 1; border-radius: 3px; background: rgba(255,255,255,0.18); }
-  .pip.done { background: #ffc53d; }
-  .pip.now { background: #ff7847; }
-  .next-line { font-size: 13px; color: #cfd8e3; }
-  .next-line b { color: #54a0ff; letter-spacing: 0.5px; }
-  /* dispatch board */
-  #dispatch-card { position: absolute; top: 218px; left: 14px; width: 342px; padding: 9px 13px; }
-  #dispatch-head { display: flex; justify-content: space-between; font-weight: 800; font-size: 13.5px; letter-spacing: 0.5px; color: #ff8fa3; }
-  #hud-dispatch-count { color: #fff; }
-  .dispatch-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13.5px; }
-  .d-name { font-weight: 700; width: 86px; }
-  .d-dist { color: #cfd8e3; width: 52px; text-align: right; }
-  .d-tag { margin-left: auto; font-size: 10.5px; font-weight: 800; letter-spacing: 0.4px; padding: 2px 7px; border-radius: 4px; color: #fff; }
-  .dispatch-more { margin-top: 6px; font-size: 12px; color: #9fb2c8; }
-  /* top-right stack */
-  #top-right { position: absolute; top: 12px; right: 16px; text-align: right; }
-  #hud-clock { font-size: 15px; font-weight: 700; color: #eaf2fb; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
-  #hud-cash { font-size: 37px; font-weight: 900; color: #3ddc84; text-shadow: 0 2px 5px rgba(0,0,0,0.55); line-height: 1.05; }
-  #hud-stars { font-size: 24px; letter-spacing: 3px; }
-  .star { color: rgba(255,255,255,0.28); text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
-  .star.on { color: #ffd53d; }
-  #hud-sight { display: inline-block; margin-top: 3px; background: #d90429; color: #fff; font-weight: 800; font-size: 12px; padding: 3px 9px; border-radius: 5px; letter-spacing: 0.4px; }
-  #rank-line { margin-top: 7px; font-size: 13px; }
-  #hud-rank-name { background: #20304f; border: 1px solid #ffc53d; color: #ffc53d; font-weight: 800; padding: 2px 8px; border-radius: 5px; letter-spacing: 0.5px; }
-  #respect-bar { display: inline-block; vertical-align: middle; width: 110px; height: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; margin: 0 7px; overflow: hidden; }
-  #hud-respect-fill { display: block; height: 100%; background: #ffc53d; width: 30%; }
-  /* weapons strip */
-  #hud-weapons { position: absolute; top: 202px; right: 16px; display: flex; gap: 6px; }
-  .weapon { width: 74px; padding: 6px 7px 5px; background: rgba(13,17,28,0.78); border: 1px solid rgba(255,255,255,0.16); border-radius: 8px; text-align: center; }
-  .weapon.active { border-color: #ffc53d; background: rgba(50, 38, 10, 0.85); }
-  .weapon.locked { opacity: 0.45; }
-  .w-key { float: left; font-size: 10px; color: #9fb2c8; font-weight: 800; }
-  .w-icon { display: block; font-size: 17px; font-weight: 900; letter-spacing: 1px; color: #ffd98a; }
-  .w-name { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: 0.3px; color: #e8eef6; }
-  .w-ammo { display: block; font-size: 11px; font-weight: 800; color: #fff; }
-  /* crew cards */
-  #hud-crew { position: absolute; top: 282px; right: 16px; width: 208px; display: flex; flex-direction: column; gap: 6px; }
-  .crew-card { display: flex; align-items: center; gap: 9px; background: rgba(13,17,28,0.78); border: 1px solid rgba(255,255,255,0.14); border-radius: 9px; padding: 6px 9px; }
-  .crew-face { width: 34px; height: 34px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
-  .crew-text b { display: block; font-size: 13.5px; letter-spacing: 0.4px; }
-  .crew-text i { font-style: normal; font-size: 11.5px; color: #9fb2c8; }
-  .crew-badge { margin-left: auto; background: #ffc53d; color: #1d2739; font-weight: 900; font-size: 12px; min-width: 21px; height: 21px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-  /* bottom-left: minimap + vitals */
-  #map-wrap { position: absolute; left: 16px; bottom: 16px; width: 196px; }
-  #hud-minimap { width: 196px; height: 196px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.35); background: #20303c; display: block; }
-  #district-line { margin-top: 7px; text-shadow: 0 1px 3px rgba(0,0,0,0.65); }
-  #hud-district { font-size: 19px; font-weight: 900; color: #ffc53d; letter-spacing: 0.5px; }
-  #hud-district-sub { font-size: 12.5px; color: #e8eef6; }
-  .vital { display: flex; align-items: center; gap: 7px; margin-top: 5px; font-size: 12px; font-weight: 800; }
-  .vital .bar { flex: 1; height: 9px; background: rgba(255,255,255,0.22); border-radius: 4px; overflow: hidden; }
-  #hud-health-fill { display: block; height: 100%; background: #3ddc84; width: 100%; }
-  #hud-armor-fill { display: block; height: 100%; background: #54a0ff; width: 55%; }
-  /* dialogue */
-  #hud-dialogue { position: absolute; left: 50%; transform: translateX(-50%); bottom: 18px; width: 520px; max-width: 46vw; display: flex; gap: 11px; padding: 10px 13px; align-items: flex-start; }
-  #hud-dlg-face { width: 46px; height: 46px; border-radius: 9px; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 16px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
-  #hud-dlg-name { color: #2ec4b6; font-weight: 900; font-size: 14.5px; letter-spacing: 0.3px; }
-  #hud-dlg-role { color: #9fb2c8; font-weight: 700; font-size: 11px; margin-left: 6px; letter-spacing: 0.6px; }
-  #hud-dlg-text { font-size: 14.5px; line-height: 1.35; margin-top: 2px; }
-  /* bottom-right: radio + vehicle */
-  #br-stack { position: absolute; right: 16px; bottom: 16px; width: 312px; text-align: right; }
-  #hud-radio { display: inline-block; background: rgba(13,17,28,0.78); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; color: #7be3c3; margin-bottom: 7px; }
-  #hud-vehicle { padding: 9px 13px; text-align: right; }
-  #hud-veh-name { font-size: 16.5px; font-weight: 900; letter-spacing: 0.5px; color: #7be3c3; }
-  .cond-line { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 800; color: #cfd8e3; margin: 4px 0; }
-  .cond-line .bar { flex: 1; height: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; overflow: hidden; }
-  #hud-veh-cond { display: block; height: 100%; background: #3ddc84; width: 90%; }
-  #hud-veh-speed { font-size: 43px; font-weight: 900; line-height: 1; }
-  #hud-veh-speed small { font-size: 13px; color: #9fb2c8; margin-left: 5px; letter-spacing: 1px; }
-  /* start screen */
-  #start-screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 9vh; background: linear-gradient(180deg, rgba(10,10,25,0.06) 40%, rgba(10,10,25,0.55)); color: #fff; text-align: center; }
-  #start-screen h1 { font-size: 64px; font-weight: 900; letter-spacing: 2px; color: #fff; text-shadow: 0 4px 0 #d90429, 0 8px 22px rgba(0,0,0,0.6); }
-  #start-screen h2 { font-size: 17px; font-weight: 700; color: #ffd98a; letter-spacing: 3px; margin: 4px 0 18px; }
-  #start-btn { pointer-events: auto; cursor: pointer; background: #d90429; color: #fff; border: 0; font-size: 19px; font-weight: 900; letter-spacing: 1px; padding: 13px 42px; border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.45); }
-  #start-btn:hover { background: #ff2445; }
-  #start-screen p { margin-top: 14px; font-size: 13.5px; color: #e8eef6; text-shadow: 0 1px 3px rgba(0,0,0,0.7); line-height: 1.5; }
+  html, body { margin:0; padding:0; background:#1b1030; height:100%; overflow:hidden;
+    font-family:"Trebuchet MS","Segoe UI",Verdana,sans-serif; }
+  #wrap { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(120% 120% at 50% 20%, #3a1c5e 0%, #170b2c 70%); }
+  canvas { width:min(100vw, 177.78vh); height:min(56.25vw, 100vh); display:block;
+    box-shadow:0 18px 60px rgba(0,0,0,.55); background:#000; }
 </style>
-<script type="importmap">
-{ "imports": { "three": "./vendor/three.module.min.js" } }
-</script>
 </head>
 <body>
-<canvas id="game-canvas"></canvas>
+<div id="wrap"><canvas id="cv" width="1024" height="576"></canvas></div>
+<script>
+'use strict';
+/* =====================================================================
+   MARISOL BAY — an original open-world crime game.
+   One self-contained file: a painter-style 2D canvas renderer with
+   layered parallax, gradient skies and shape-drawn vehicles and people.
+   Playable with keyboard and mouse; deterministic seeded scenes are
+   available through ?shot=<name>&seed=<n> for screenshot capture.
+   ===================================================================== */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 1024, H = 576;
+const Q = new URLSearchParams(location.search);
+const SHOT = Q.get('shot') || '';
+const SEED = parseInt(Q.get('seed') || '7', 10) || 7;
 
-<div id="hud" style="display:none">
-  <div id="mission-card" class="card">
-    <div><span id="hud-mission-kicker">JOB 1/8</span><span id="hud-mission-timer"></span></div>
-    <div id="hud-mission-title">MARISOL BAY</div>
-    <div id="hud-mission-obj"></div>
-    <div id="hud-stage-pips"></div>
-    <div class="next-line"><b>NEXT</b> · <span id="hud-mission-next"></span></div>
-  </div>
+/* ---------- deterministic random ---------- */
+function mulberry(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+let R = mulberry(SEED * 1000 + 17);
+const rr = (a, b) => a + R() * (b - a);
+const pick = arr => arr[Math.floor(R() * arr.length)];
 
-  <div id="dispatch-card" class="card">
-    <div id="dispatch-head"><span>◆ MBPD DISPATCH</span><span id="hud-dispatch-count">0 UNITS</span></div>
-    <div id="hud-dispatch"></div>
-  </div>
+/* ---------- small drawing helpers ---------- */
+function rect(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
+function rrect(x, y, w, h, r, c) {
+  ctx.fillStyle = c; ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath(); ctx.fill();
+}
+function poly(pts, c) {
+  ctx.fillStyle = c; ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath(); ctx.fill();
+}
+function circle(x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }
+function line(x1, y1, x2, y2, c, w) {
+  ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath();
+  ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+}
+function txt(s, x, y, size, c, align, bold, font) {
+  ctx.fillStyle = c; ctx.font = (bold ? 'bold ' : '') + size + 'px ' + (font || '"Trebuchet MS","Segoe UI",Verdana,sans-serif');
+  ctx.textAlign = align || 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.fillText(s, x, y);
+}
+function vgrad(x, y, w, h, stops) {
+  const g = ctx.createLinearGradient(x, y, x, y + h);
+  for (const [o, c] of stops) g.addColorStop(o, c);
+  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+}
+function panel(x, y, w, h, alpha) {
+  rrect(x, y, w, h, 9, 'rgba(10,14,30,' + (alpha == null ? 0.78 : alpha) + ')');
+  ctx.strokeStyle = 'rgba(140,220,255,0.35)'; ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+}
+function star(x, y, r, filled) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const rad = i % 2 ? r * 0.45 : r, a = -Math.PI / 2 + i * Math.PI / 5;
+    const px = x + Math.cos(a) * rad, py = y + Math.sin(a) * rad;
+    i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  }
+  ctx.closePath();
+  if (filled) { ctx.fillStyle = '#ffd94d'; ctx.fill(); }
+  ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 1.4; ctx.stroke();
+}
 
-  <div id="top-right">
-    <div id="hud-clock">18:12</div>
-    <div id="hud-cash">$0</div>
-    <div id="hud-stars"></div>
-    <div><span id="hud-sight" style="display:none"></span></div>
-    <div id="rank-line"><span id="hud-rank-name">FIXER</span><span id="respect-bar"><span id="hud-respect-fill"></span></span><span id="hud-respect-text"></span></div>
-  </div>
+/* ---------- vehicles (rear three-quarter painter style) ---------- */
+function drawCar(x, y, w, body, opts) {
+  opts = opts || {};
+  const h = w * 0.46, top = y - h;
+  // shadow + tyres
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath(); ctx.ellipse(x, y + 4, w * 0.54, h * 0.16, 0, 0, 7); ctx.fill();
+  rect(x - w * 0.46, y - h * 0.30, w * 0.13, h * 0.30, '#14161c');
+  rect(x + w * 0.33, y - h * 0.30, w * 0.13, h * 0.30, '#14161c');
+  // main body
+  const g = ctx.createLinearGradient(x, top, x, y);
+  g.addColorStop(0, opts.roof || body); g.addColorStop(0.45, body); g.addColorStop(1, shade(body, -28));
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.5, y);
+  ctx.lineTo(x - w * 0.48, top + h * 0.38);
+  ctx.lineTo(x - w * 0.30, top + h * 0.10);
+  ctx.lineTo(x + w * 0.30, top + h * 0.10);
+  ctx.lineTo(x + w * 0.48, top + h * 0.38);
+  ctx.lineTo(x + w * 0.5, y);
+  ctx.closePath(); ctx.fill();
+  // cabin glass
+  poly([[x - w * 0.27, top + h * 0.36], [x - w * 0.17, top + h * 0.15],
+        [x + w * 0.17, top + h * 0.15], [x + w * 0.27, top + h * 0.36]], 'rgba(18,32,52,0.92)');
+  line(x, top + h * 0.15, x, top + h * 0.36, 'rgba(0,0,0,0.35)', 2);
+  // rear window band + spoiler for the hero car
+  if (opts.spoiler) {
+    rect(x - w * 0.44, top + h * 0.30, w * 0.88, h * 0.07, '#101018');
+    rect(x - w * 0.30, top + h * 0.37, w * 0.05, h * 0.12, '#101018');
+    rect(x + w * 0.25, top + h * 0.37, w * 0.05, h * 0.12, '#101018');
+  }
+  // tail lights
+  const tl = opts.police ? '#ff5a4d' : '#ff3b30';
+  rrect(x - w * 0.44, y - h * 0.30, w * 0.20, h * 0.10, 3, tl);
+  rrect(x + w * 0.24, y - h * 0.30, w * 0.20, h * 0.10, 3, opts.police ? '#5ab0ff' : tl);
+  // plate + exhausts
+  rrect(x - w * 0.11, y - h * 0.24, w * 0.22, h * 0.13, 2, '#e8ecf2');
+  txt(opts.plate || 'MB·GT 7', x, y - h * 0.135, Math.max(7, w * 0.055), '#26324a', 'center', true);
+  circle(x - w * 0.30, y - h * 0.05, w * 0.028, '#3c4350');
+  circle(x + w * 0.30, y - h * 0.05, w * 0.028, '#3c4350');
+  if (opts.police) {
+    rect(x - w * 0.5, top + h * 0.52, w, h * 0.16, '#f2f5f9');
+    txt('MBPD', x, top + h * 0.645, Math.max(8, w * 0.085), '#173a6e', 'center', true);
+    // light bar
+    const ly = top + h * 0.02;
+    rrect(x - w * 0.30, ly, w * 0.28, h * 0.09, 3, '#ff4040');
+    rrect(x + w * 0.02, ly, w * 0.28, h * 0.09, 3, '#3f8cff');
+    if (opts.flash) {
+      ctx.fillStyle = 'rgba(255,70,60,0.20)';
+      ctx.beginPath(); ctx.ellipse(x - w * 0.16, ly, w * 0.34, h * 0.20, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(70,140,255,0.20)';
+      ctx.beginPath(); ctx.ellipse(x + w * 0.16, ly, w * 0.34, h * 0.20, 0, 0, 7); ctx.fill();
+    }
+  }
+  if (opts.label) txt(opts.label, x, top - 8, Math.max(9, w * 0.07), '#fff', 'center', true);
+}
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) + amt, g = ((n >> 8) & 255) + amt, b = (n & 255) + amt;
+  r = Math.max(0, Math.min(255, r)); g = Math.max(0, Math.min(255, g)); b = Math.max(0, Math.min(255, b));
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
 
-  <div id="hud-weapons"></div>
-  <div id="hud-crew"></div>
+/* ---------- people ---------- */
+function drawPerson(x, y, s, shirt, pants, skin, pose) {
+  // s = height in px, (x,y) = feet centre
+  const hip = y - s * 0.48, sh = y - s * 0.82;
+  ctx.strokeStyle = pants; ctx.lineWidth = s * 0.11; ctx.lineCap = 'round';
+  ctx.beginPath();
+  if (pose === 'run') {
+    ctx.moveTo(x, hip); ctx.lineTo(x - s * 0.16, y - s * 0.22); ctx.lineTo(x - s * 0.05, y);
+    ctx.moveTo(x, hip); ctx.lineTo(x + s * 0.18, y - s * 0.26); ctx.lineTo(x + s * 0.30, y - s * 0.02);
+  } else if (pose === 'down') {
+    // handled by drawDownGuard; simple prone shape
+    ctx.moveTo(x - s * 0.4, y); ctx.lineTo(x + s * 0.4, y);
+  } else {
+    ctx.moveTo(x, hip); ctx.lineTo(x - s * 0.10, y);
+    ctx.moveTo(x, hip); ctx.lineTo(x + s * 0.10, y);
+  }
+  ctx.stroke();
+  ctx.strokeStyle = shirt; ctx.lineWidth = s * 0.13;
+  ctx.beginPath(); ctx.moveTo(x, hip); ctx.lineTo(x, sh); ctx.stroke();
+  ctx.beginPath();
+  if (pose === 'react') {
+    ctx.moveTo(x, sh + s * 0.06); ctx.lineTo(x - s * 0.26, sh - s * 0.14);
+    ctx.moveTo(x, sh + s * 0.06); ctx.lineTo(x + s * 0.24, sh - s * 0.20);
+  } else if (pose === 'run') {
+    ctx.moveTo(x, sh + s * 0.06); ctx.lineTo(x - s * 0.22, sh + s * 0.22);
+    ctx.moveTo(x, sh + s * 0.06); ctx.lineTo(x + s * 0.24, sh + s * 0.10);
+  } else {
+    ctx.moveTo(x, sh + s * 0.06); ctx.lineTo(x - s * 0.18, sh + s * 0.26);
+    ctx.moveTo(x, sh + s * 0.06); ctx.lineTo(x + s * 0.18, sh + s * 0.26);
+  }
+  ctx.stroke(); ctx.lineCap = 'butt';
+  circle(x, sh - s * 0.10, s * 0.105, skin);
+}
+function drawDownGuard(x, y, s) {
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(x, y + 3, s * 0.62, s * 0.10, 0, 0, 7); ctx.fill();
+  rrect(x - s * 0.55, y - s * 0.13, s * 0.62, s * 0.15, s * 0.07, '#2c4a73'); // legs/trousers
+  rrect(x + s * 0.02, y - s * 0.16, s * 0.42, s * 0.18, s * 0.08, '#e8b13a'); // hi-vis vest torso
+  circle(x + s * 0.55, y - s * 0.08, s * 0.11, '#c98d64'); // head
+  rrect(x + s * 0.44, y - s * 0.22, s * 0.22, s * 0.07, 3, '#20344f'); // cap beside head
+  txt('z z', x + s * 0.62, y - s * 0.30, s * 0.16, '#cfe6ff', 'left', true);
+}
 
-  <div id="map-wrap">
-    <canvas id="hud-minimap" width="196" height="196"></canvas>
-    <div id="district-line"><div id="hud-district">CORAL STRAND</div><div id="hud-district-sub">Marisol Bay</div></div>
-    <div class="vital"><span>HEALTH</span><span class="bar"><span id="hud-health-fill"></span></span><span id="hud-health-text">100</span></div>
-    <div class="vital"><span>ARMOR</span><span class="bar"><span id="hud-armor-fill"></span></span><span id="hud-armor-text">55</span></div>
-  </div>
+/* ---------- scenery pieces ---------- */
+function drawPalm(x, baseY, s, lean) {
+  ctx.strokeStyle = '#6b4a2c'; ctx.lineWidth = s * 0.07; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x, baseY);
+  ctx.quadraticCurveTo(x + lean * s * 0.2, baseY - s * 0.6, x + lean * s * 0.42, baseY - s);
+  ctx.stroke(); ctx.lineCap = 'butt';
+  const txp = x + lean * s * 0.42, typ = baseY - s;
+  ctx.strokeStyle = '#2e9e5b'; ctx.lineWidth = s * 0.045;
+  for (let i = 0; i < 7; i++) {
+    const a = Math.PI * (0.08 + i * 0.14);
+    ctx.beginPath(); ctx.moveTo(txp, typ);
+    ctx.quadraticCurveTo(txp + Math.cos(a) * s * 0.34, typ - Math.sin(a) * s * 0.30 + s * 0.10,
+                         txp + Math.cos(a) * s * 0.52, typ - Math.sin(a) * s * 0.34 + s * 0.30);
+    ctx.stroke();
+  }
+  circle(txp - 4, typ + 4, s * 0.045, '#7a5230'); circle(txp + 5, typ + 5, s * 0.04, '#7a5230');
+}
+function drawTower(x, yBase, w, h, base, litRatio, sign) {
+  const g = ctx.createLinearGradient(x, yBase - h, x, yBase);
+  g.addColorStop(0, shade(base, 26)); g.addColorStop(1, shade(base, -18));
+  ctx.fillStyle = g; ctx.fillRect(x, yBase - h, w, h);
+  const cols = Math.max(3, Math.floor(w / 13)), rows = Math.max(6, Math.floor(h / 17));
+  for (let cx = 0; cx < cols; cx++) for (let ry = 0; ry < rows; ry++) {
+    const lit = R() < litRatio;
+    ctx.fillStyle = lit ? 'rgba(255,214,130,0.95)' : 'rgba(30,44,74,0.85)';
+    ctx.fillRect(x + 5 + cx * (w - 8) / cols, yBase - h + 7 + ry * (h - 12) / rows,
+                 (w - 10) / cols - 3, (h - 14) / rows - 4);
+  }
+  if (sign) {
+    rrect(x + 3, yBase - h - 20, w - 6, 17, 4, 'rgba(8,10,24,0.85)');
+    txt(sign, x + w / 2, yBase - h - 7, 10, '#7df0ff', 'center', true);
+  }
+}
+function drawHeli(x, y, s, spotTo) {
+  // spotlight cone first (behind body)
+  if (spotTo) {
+    const g = ctx.createLinearGradient(x, y, spotTo[0], spotTo[1]);
+    g.addColorStop(0, 'rgba(255,246,190,0.55)'); g.addColorStop(1, 'rgba(255,246,190,0.10)');
+    ctx.fillStyle = g;
+    poly([[x - s * 0.05, y + s * 0.16], [x + s * 0.10, y + s * 0.16],
+          [spotTo[0] + s * 0.85, spotTo[1]], [spotTo[0] - s * 0.85, spotTo[1]]], g);
+    ctx.strokeStyle = 'rgba(255,248,205,0.35)'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x - s * 0.05, y + s * 0.16); ctx.lineTo(spotTo[0] - s * 0.85, spotTo[1]);
+    ctx.moveTo(x + s * 0.10, y + s * 0.16); ctx.lineTo(spotTo[0] + s * 0.85, spotTo[1]);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,248,205,0.45)';
+    ctx.beginPath(); ctx.ellipse(spotTo[0], spotTo[1], s * 0.85, s * 0.20, 0, 0, 7); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath(); ctx.ellipse(x, y + s * 1.5, s * 0.7, s * 0.1, 0, 0, 7); ctx.fill();
+  // tail + boom
+  poly([[x + s * 0.28, y - s * 0.02], [x + s * 1.05, y - s * 0.16], [x + s * 1.05, y + s * 0.02], [x + s * 0.28, y + s * 0.10]], '#22304a');
+  rect(x + s * 1.0, y - s * 0.34, s * 0.09, s * 0.42, '#22304a');
+  rect(x + s * 0.97, y - s * 0.36, s * 0.15, s * 0.07, '#ff5040');
+  // body
+  const g2 = ctx.createLinearGradient(x, y - s * 0.3, x, y + s * 0.3);
+  g2.addColorStop(0, '#31456b'); g2.addColorStop(1, '#16233c');
+  ctx.fillStyle = g2;
+  ctx.beginPath(); ctx.ellipse(x, y, s * 0.46, s * 0.27, 0, 0, 7); ctx.fill();
+  poly([[x - s * 0.40, y - s * 0.14], [x - s * 0.16, y - s * 0.19], [x - s * 0.12, y + s * 0.03], [x - s * 0.36, y + s * 0.06]], 'rgba(140,220,255,0.85)');
+  txt('MBPD AIR-1', x + s * 0.16, y + s * 0.05, s * 0.13, '#eaf6ff', 'center', true);
+  // skids + rotor
+  line(x - s * 0.3, y + s * 0.38, x + s * 0.3, y + s * 0.38, '#0e1626', s * 0.045);
+  line(x - s * 0.18, y + s * 0.24, x - s * 0.22, y + s * 0.38, '#0e1626', s * 0.04);
+  line(x + s * 0.18, y + s * 0.24, x + s * 0.22, y + s * 0.38, '#0e1626', s * 0.04);
+  line(x - s * 0.85, y - s * 0.36, x + s * 0.85, y - s * 0.36, 'rgba(20,26,40,0.85)', s * 0.05);
+  rect(x - s * 0.03, y - s * 0.36, s * 0.06, s * 0.10, '#0e1626');
+  circle(x - s * 0.30, y + s * 0.02, s * 0.045, '#ff4040');
+  circle(x + s * 0.34, y + s * 0.02, s * 0.045, '#54ff9a');
+}
+/* ---------- HUD components ---------- */
+const CREW = [
+  { name: 'VERA', role: 'Wheel', col: '#ff7a59', status: 'Driving — hands steady' },
+  { name: 'MAKO', role: 'Muscle', col: '#54c8ff', status: 'Rear guard, watching mirrors' },
+  { name: 'GUS', role: 'Fixer', col: '#ffd94d', status: 'Scanner up, routes open' },
+  { name: 'IVY', role: 'Lookout', col: '#8dff9a', status: 'Calling traffic + roadblocks' },
+];
+function crewStack(x, y, statuses) {
+  panel(x, y, 218, 26 + CREW.length * 30, 0.72);
+  txt('CREW', x + 10, y + 18, 11, '#7df0ff', 'left', true);
+  CREW.forEach((c, i) => {
+    const cy = y + 32 + i * 30;
+    circle(x + 20, cy + 4, 10, c.col);
+    txt(c.name[0], x + 20, cy + 8, 11, '#10131f', 'center', true);
+    txt(c.name + ' · ' + c.role, x + 36, cy, 11, '#fff', 'left', true);
+    txt(statuses && statuses[i] ? statuses[i] : c.status, x + 36, cy + 13, 9.5, '#bcd6f5');
+  });
+}
+function missionCard(x, y, job, stage, objective, next) {
+  panel(x, y, 252, 96, 0.80);
+  rect(x, y, 5, 96, '#ffb03a');
+  txt('MISSION', x + 14, y + 17, 10, '#ffb03a', 'left', true);
+  txt(stage, x + 238, y + 17, 10, '#7df0ff', 'right', true);
+  txt(job, x + 14, y + 38, 16, '#fff', 'left', true);
+  txt(objective, x + 14, y + 58, 11.5, '#dceaff');
+  txt('NEXT: ' + next, x + 14, y + 78, 11, '#8dff9a', 'left', true);
+}
+function dispatch(x, y, title, units) {
+  panel(x, y, 262, 30 + units.length * 19, 0.82);
+  txt(title, x + 10, y + 19, 11, '#ff9a8a', 'left', true);
+  units.forEach((u, i) => {
+    const uy = y + 40 + i * 19;
+    circle(x + 13, uy - 4, 3.5, '#ff5040');
+    txt(u[0], x + 22, uy, 9.5, '#fff', 'left', true);
+    txt(u[1], x + 148, uy, 9.5, '#ffd94d', 'left', true);
+    txt(u[2], x + 254, uy, 10, '#bcd6f5', 'right', true);
+  });
+}
+function topBar(cash, clock, stars, stateText) {
+  panel(330, 10, 364, 44, 0.72);
+  txt('$ ' + cash, 348, 39, 19, '#8dff9a', 'left', true);
+  txt(clock, 500, 30, 15, '#fff', 'center', true);
+  txt(stateText, 500, 47, 9, '#ffd94d', 'center', true);
+  for (let i = 0; i < 5; i++) star(588 + i * 24, 32, 9.5, i < stars);
+}
+function weaponChips(x, y, items) {
+  items.forEach((w, i) => {
+    const wx = x + i * 92;
+    panel(wx, y, 84, 40, 0.72);
+    txt(w[0], wx + 8, y + 17, 10.5, '#fff', 'left', true);
+    txt(w[1], wx + 8, y + 33, 10, '#7df0ff');
+  });
+}
+function vehicleCard(x, y, name, cond, speed) {
+  panel(x, y, 208, 62, 0.78);
+  txt(name, x + 10, y + 19, 13, '#fff', 'left', true);
+  txt(speed + ' km/h', x + 198, y + 19, 13, '#ffb03a', 'right', true);
+  rect(x + 10, y + 28, 188, 9, '#2a3350');
+  rect(x + 10, y + 28, 188 * cond / 100, 9, cond > 50 ? '#54e08a' : '#ff5040');
+  txt('CONDITION ' + cond + '%', x + 10, y + 52, 9.5, '#bcd6f5');
+  txt('NOS READY', x + 198, y + 52, 9.5, '#7df0ff', 'right', true);
+}
+function dialogue(x, y, who, col, line1, line2) {
+  panel(x, y, 330, 52, 0.82);
+  circle(x + 18, y + 26, 12, col);
+  txt(who[0], x + 18, y + 30, 12, '#10131f', 'center', true);
+  txt(who, x + 38, y + 21, 11, col, 'left', true);
+  txt(line1, x + 38, y + 36, 11.5, '#fff');
+  if (line2) txt(line2, x + 38, y + 49, 11.5, '#dceaff');
+}
+function radioLine(x, y, s) {
+  panel(x, y, 300, 24, 0.6);
+  txt('♪ ' + s, x + 10, y + 16, 10.5, '#f2b8ff');
+}
+function minimap(cx, cy, r, routePts, blips, label) {
+  circle(cx, cy, r + 5, 'rgba(10,14,30,0.78)');
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.clip();
+  circle(cx, cy, r, '#1d3a5f');
+  // land + beach + roads
+  poly([[cx - r, cy - r * 0.2], [cx + r, cy - r * 0.45], [cx + r, cy + r], [cx - r, cy + r]], '#2e6b4f');
+  poly([[cx - r, cy - r * 0.2], [cx + r, cy - r * 0.45], [cx + r, cy - r * 0.1], [cx - r, cy + r * 0.25]], '#e8cf92');
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(cx - r * 0.8, cy + r * 0.55); ctx.lineTo(cx + r * 0.8, cy - r * 0.2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - r * 0.2, cy + r * 0.9); ctx.lineTo(cx + r * 0.1, cy - r * 0.7); ctx.stroke();
+  if (routePts && routePts.length > 1) {
+    ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 3.5; ctx.beginPath();
+    routePts.forEach((p, i) => { const px = cx + p[0] * r, py = cy + p[1] * r; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+    ctx.stroke();
+    const last = routePts[routePts.length - 1];
+    circle(cx + last[0] * r, cy + last[1] * r, 5, '#ffd94d');
+  }
+  (blips || []).forEach(b => circle(cx + b[0] * r, cy + b[1] * r, b[2] || 4, b[3] || '#ff5040'));
+  // player arrow
+  poly([[cx, cy - 8], [cx + 6, cy + 6], [cx, cy + 2], [cx - 6, cy + 6]], '#fff');
+  ctx.restore();
+  circle(cx, cy, r, 'rgba(0,0,0,0)');
+  ctx.strokeStyle = 'rgba(140,220,255,0.5)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.stroke();
+  if (label) txt(label, cx, cy + r + 16, 10, '#bcd6f5', 'center', true);
+}
 
-  <div id="hud-dialogue" class="card">
-    <div id="hud-dlg-face">VS</div>
-    <div><span id="hud-dlg-name">Vera Solano</span><span id="hud-dlg-role">FIXER</span><div id="hud-dlg-text"></div></div>
-  </div>
+/* ---------- shared boulevard backdrop ---------- */
+function boulevardSky(kind) {
+  if (kind === 'golden') vgrad(0, 0, W, 300, [[0, '#3d2a6e'], [0.35, '#c7507e'], [0.7, '#ff9a56'], [1, '#ffc46b']]);
+  else if (kind === 'dusk') vgrad(0, 0, W, 300, [[0, '#2c1e5e'], [0.45, '#6e3a8e'], [0.78, '#c65b8f'], [1, '#ff9e6e']]);
+  else vgrad(0, 0, W, 300, [[0, '#274b8f'], [0.6, '#5f9fd8'], [1, '#a8dcff']]);
+  circle(kind === 'golden' ? 770 : 830, kind === 'golden' ? 128 : 92, kind === 'golden' ? 34 : 24, 'rgba(255,236,170,0.95)');
+  ctx.fillStyle = 'rgba(255,244,200,0.25)';
+  ctx.beginPath(); ctx.arc(kind === 'golden' ? 770 : 830, kind === 'golden' ? 128 : 92, 58, 0, 7); ctx.fill();
+}
+function roadPerspective(horizon, nearL, nearR, farL, farR, col) {
+  poly([[farL, horizon], [farR, horizon], [nearR, H], [nearL, H]], col || '#3a3f4d');
+  // edge lines + dashes converging to the vanishing point
+  const vx = (farL + farR) / 2;
+  line(farL, horizon, nearL, H, '#f5f7fa', 4); line(farR, horizon, nearR, H, '#f5f7fa', 4);
+  for (let i = 0; i < 7; i++) {
+    const t0 = Math.pow(i / 7, 1.7), t1 = Math.pow((i + 0.45) / 7, 1.7);
+    for (const f of [-0.33, 0.33]) {
+      line(vx + (nearL + (nearR - nearL) * (0.5 + f / 2) - vx) * t0, horizon + (H - horizon) * t0,
+           vx + (nearL + (nearR - nearL) * (0.5 + f / 2) - vx) * t1, horizon + (H - horizon) * t1, '#ffd94d', 2 + t0 * 5);
+    }
+  }
+}
 
-  <div id="br-stack">
-    <div id="hud-radio"></div>
-    <div id="hud-vehicle" class="card">
-      <div id="hud-veh-name">SOLANA GT</div>
-      <div class="cond-line"><span>CONDITION</span><span class="bar"><span id="hud-veh-cond"></span></span></div>
-      <div id="hud-veh-speed">0<small>KM/H</small></div>
-    </div>
-  </div>
-</div>
+/* =====================================================================
+   SCENE 1 — HERO CHASE, golden hour, The Strand
+   ===================================================================== */
+function sceneChase() {
+  R = mulberry(SEED * 1000 + 101);
+  boulevardSky('golden');
+  const horizon = 218;
+  rect(0, horizon, W, H - horizon, '#7c828e'); // ground base — no empty corners
+  // ocean + beach on the left
+  vgrad(0, horizon - 30, 300, 130, [[0, '#2e7fc4'], [1, '#63c2e8']]);
+  for (let i = 0; i < 12; i++) line(rr(6, 260), horizon + rr(-16, 70), rr(30, 290), horizon + rr(-16, 70), 'rgba(255,255,255,0.5)', 2);
+  poly([[0, horizon + 58], [330, horizon + 30], [300, H], [0, H]], '#f0d79a');
+  // towers on the right
+  drawTower(742, horizon + 26, 74, 168, '#5a6f9e', 0.55);
+  drawTower(822, horizon + 30, 66, 132, '#74628f', 0.5);
+  drawTower(676, horizon + 22, 60, 118, '#4c5f8a', 0.45, 'HOTEL SOLANO');
+  drawTower(892, horizon + 34, 80, 196, '#66779f', 0.6, 'CASINO ROW');
+  drawTower(972, horizon + 30, 52, 148, '#596b96', 0.5);
+  // distant city left of the vanishing point
+  drawTower(352, horizon + 14, 44, 84, '#5d6f9c', 0.4);
+  drawTower(402, horizon + 16, 38, 66, '#6a5a8f', 0.4);
+  // road
+  roadPerspective(horizon, 268, 986, 452, 588, '#404654');
+  // sidewalks
+  poly([[452, horizon], [268, H], [150, H], [330, horizon]], '#9aa0ad');
+  poly([[588, horizon], [986, H], [1024, H], [700, horizon]], '#9aa0ad');
+  // palm rows
+  drawPalm(318, 330, 120, -1); drawPalm(238, 430, 165, -1); drawPalm(150, 545, 215, -1);
+  drawPalm(700, 322, 108, 1); drawPalm(806, 420, 150, 1); drawPalm(918, 540, 205, 1);
+  // pedestrians on both sidewalks
+  const skin = ['#c98d64', '#8a5a3b', '#e8b48c', '#6e4530'];
+  const shirtC = ['#ff7a59', '#54c8ff', '#ffd94d', '#8dff9a', '#f2b8ff', '#fff'];
+  drawPerson(392, 300, 34, pick(shirtC), '#33507e', pick(skin), 'walk');
+  drawPerson(640, 296, 32, pick(shirtC), '#5e3350', pick(skin), 'walk');
+  drawPerson(300, 420, 52, pick(shirtC), '#33507e', pick(skin), 'run');
+  drawPerson(872, 408, 50, pick(shirtC), '#444', pick(skin), 'walk');
+  drawPerson(196, 512, 66, pick(shirtC), '#7e3350', pick(skin), 'walk');
+  drawPerson(952, 520, 68, pick(shirtC), '#33507e', pick(skin), 'run');
+  // signage
+  rrect(596, 236, 118, 22, 4, 'rgba(8,20,40,0.9)');
+  txt('THE STRAND →', 655, 251, 12, '#7df0ff', 'center', true);
+  rrect(330, 244, 104, 20, 4, 'rgba(8,20,40,0.9)');
+  txt('← MARISOL BAY', 382, 258, 11, '#ffd94d', 'center', true);
+  // roadblock far ahead: two cruisers + spike strip
+  drawCar(492, 268, 62, '#e8ecf2', { police: true, roof: '#31456b', plate: 'MBPD·12' });
+  drawCar(560, 268, 62, '#e8ecf2', { police: true, roof: '#31456b', plate: 'MBPD·09' });
+  for (let i = 0; i < 9; i++) line(478 + i * 12, 276, 486 + i * 12, 268, '#ffd94d', 2.5);
+  txt('ROADBLOCK', 526, 232, 10, '#ff9a8a', 'center', true);
+  // civilian traffic
+  drawCar(430, 330, 74, '#e0a83c', { plate: 'TAXI·44' });
+  drawCar(618, 344, 84, '#7a4fd0', { plate: 'MB·221' });
+  drawCar(372, 402, 104, '#3fa7a0', { plate: 'MB·908' });
+  // helicopter, large in the upper third, spotlight hitting road ahead of hero
+  drawHeli(606, 108, 118, [520, 302]);
+  // flanking cruisers at the hero's bumpers
+  drawCar(196, 470, 218, '#e8ecf2', { police: true, roof: '#31456b', flash: true, plate: 'MBPD·07' });
+  ctx.save(); ctx.translate(852, 0); ctx.rotate(0.012); ctx.translate(-852, 0);
+  drawCar(852, 478, 224, '#e8ecf2', { police: true, roof: '#31456b', flash: true, plate: 'MBPD·03' });
+  ctx.restore();
+  // HERO CAR — Vantara GT, low tight camera, ~1/3 of frame width
+  drawCar(512, 548, 348, '#d8232f', { spoiler: true, roof: '#8f1420', plate: 'VNT·GT 1', label: '' });
+  // speed streaks
+  ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 3;
+  for (let i = 0; i < 6; i++) { const y = rr(360, 540); line(rr(20, 200), y, rr(240, 420), y, 'rgba(255,255,255,0.22)', 3); }
+  /* ---- HUD ---- */
+  missionCard(10, 10, 'PEARL HEIST: GETAWAY', 'STAGE 3/4', 'Lose the MBPD tail on The Strand', 'Reach Pier 9 garage — 0.8 km');
+  dispatch(752, 10, 'MBPD DISPATCH — PURSUIT', [
+    ['Unit 3 · R. Calloway', 'RAMMING', '12 m'],
+    ['AIR-1 · S. Okafor', 'SPOTLIGHT', '60 m'],
+    ['Unit 7 · D. Ferreira', 'FLANKING', '15 m'],
+    ['Unit 12 · M. Lindqvist', 'ROADBLOCK', '310 m'],
+    ['Unit 9 · T. Brennan', 'ROADBLOCK', '315 m'],
+    ['Unit 5 · A. Petrov', 'PIT MANEUVER', '48 m'],
+    ['Unit 21 · J. Whitfield', 'BOX IN', '85 m'],
+    ['Unit 18 · K. Adeyemi', 'SEARCHING', '420 m'],
+  ]);
+  crewStack(10, 118, null);
+  topBar('48,250', '18:42', 5, 'IN SIGHT');
+  dialogue(10, 262, 'IVY', '#8dff9a', '“Roadblock ahead — two cruisers and', 'spikes at the Pearl junction. Swerve left!”');
+  weaponChips(10, 520, [['PISTOL', '24 / 96'], ['SMG', '61 / 240'], ['STICKY', '× 3']]);
+  vehicleCard(806, 500, 'VANTARA GT', 78, 128);
+  radioLine(10, 486, 'RADIO SOL 98.1 — “Neon Palms” by Coastline Club');
+  minimap(934, 288, 56, [[-0.7, 0.6], [-0.3, 0.3], [0.05, 0.05], [0.55, -0.3]],
+    [[-0.25, 0.18, 4], [0.28, 0.12, 4], [0.55, -0.3, 5, '#ffd94d'], [-0.55, 0.42, 4]], 'THE STRAND');
+}
+/* =====================================================================
+   SCENE 2 — ON-FOOT ACTION, dusk marina market, Harborfront
+   ===================================================================== */
+function stall(x, y, w, h, awn, sign, goods) {
+  rect(x, y, w, h, '#4a3423');
+  poly([[x - 6, y], [x + w + 6, y], [x + w - 8, y - 20], [x + 8, y - 20]], awn);
+  for (let i = 0; i < 5; i++) rect(x + 4 + i * (w - 8) / 5, y + 12, (w - 14) / 5, 10, goods[i % goods.length]);
+  rrect(x + 4, y - 44, w - 8, 20, 4, 'rgba(8,10,24,0.9)');
+  txt(sign, x + w / 2, y - 30, 11, '#ffd94d', 'center', true);
+}
+function stringLights(x1, y1, x2, y2, n) {
+  ctx.strokeStyle = 'rgba(40,26,16,0.8)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(x1, y1);
+  ctx.quadraticCurveTo((x1 + x2) / 2, Math.max(y1, y2) + 26, x2, y2); ctx.stroke();
+  const cols = ['#ffd94d', '#ff7a59', '#7df0ff', '#8dff9a', '#f2b8ff'];
+  for (let i = 1; i < n; i++) {
+    const t = i / n, ix = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * ((x1 + x2) / 2) + t * t * x2;
+    const iy = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * (Math.max(y1, y2) + 26) + t * t * y2;
+    circle(ix, iy + 3, 3.4, cols[i % cols.length]);
+  }
+}
+function sceneFoot() {
+  R = mulberry(SEED * 1000 + 202);
+  boulevardSky('dusk');
+  const horizon = 226;
+  // marina water + masts on the right distance, market buildings left
+  vgrad(700, horizon - 24, 324, 90, [[0, '#3a4f9e'], [1, '#7a6fc0']]);
+  for (let i = 0; i < 7; i++) {
+    const bx = 730 + i * 40;
+    line(bx, horizon + 40, bx, horizon - rr(28, 62), 'rgba(230,238,255,0.8)', 2);
+    poly([[bx, horizon + 40], [bx + 16, horizon + 40], [bx + 3, horizon + 22]], 'rgba(240,244,255,0.75)');
+  }
+  drawTower(20, horizon + 20, 92, 150, '#5a4a7e', 0.55, 'PIER 9 EATS');
+  drawTower(120, horizon + 18, 70, 112, '#4c5f8a', 0.5, 'MARINA HOTEL');
+  drawTower(560, horizon + 16, 62, 96, '#63507e', 0.45);
+  // plaza ground (bright dusk, never near-black)
+  vgrad(0, horizon, W, H - horizon, [[0, '#8a6a72'], [0.25, '#7d5f68'], [1, '#5f4a5e']]);
+  line(0, horizon, W, horizon, 'rgba(255,220,180,0.35)', 2);
+  // market stalls filling both edges
+  stall(8, 356, 128, 74, '#e2543e', 'TACO MARISOL', ['#ffd94d', '#e2543e', '#8dff9a', '#ffb03a', '#fff']);
+  stall(30, 452, 140, 66, '#2e9e8f', 'FRUTA FRESCA', ['#ff7a59', '#8dff9a', '#ffd94d', '#f2b8ff', '#e2543e']);
+  stall(884, 350, 132, 74, '#7a4fd0', 'NEON PEARLS', ['#7df0ff', '#f2b8ff', '#ffd94d', '#8dff9a', '#fff']);
+  stall(862, 448, 148, 66, '#e2543e', 'CAFÉ FARO', ['#fff', '#ffb03a', '#7df0ff', '#e2543e', '#8dff9a']);
+  stringLights(20, 300, 300, 286, 12); stringLights(724, 292, 1006, 306, 12);
+  stringLights(180, 268, 560, 258, 14); stringLights(470, 262, 850, 272, 13);
+  // neon signs
+  rrect(240, 224, 128, 24, 5, 'rgba(20,6,30,0.92)');
+  txt('MARINA MARKET', 304, 241, 13, '#ff8ae2', 'center', true);
+  rrect(648, 244, 118, 24, 5, 'rgba(6,20,26,0.92)');
+  txt('BOAT RENTALS', 707, 261, 12, '#7df0ff', 'center', true);
+  // crowd — nobody standing still
+  const skin = ['#c98d64', '#8a5a3b', '#e8b48c', '#6e4530'];
+  const shirtC = ['#ff7a59', '#54c8ff', '#ffd94d', '#8dff9a', '#f2b8ff'];
+  drawPerson(238, 386, 56, pick(shirtC), '#33507e', pick(skin), 'run');
+  drawPerson(806, 392, 58, pick(shirtC), '#5e3350', pick(skin), 'run');
+  drawPerson(330, 340, 42, pick(shirtC), '#444', pick(skin), 'walk');
+  drawPerson(716, 336, 40, pick(shirtC), '#33507e', pick(skin), 'walk');
+  drawPerson(168, 540, 74, pick(shirtC), '#7e3350', pick(skin), 'run');
+  drawPerson(880, 536, 72, pick(shirtC), '#33507e', pick(skin), 'walk');
+  // arriving cruiser at the far end
+  drawCar(520, 292, 96, '#e8ecf2', { police: true, roof: '#31456b', flash: true, plate: 'MBPD·11' });
+  txt('MBPD ARRIVING', 520, 246, 10, '#ff9a8a', 'center', true);
+  // the named cabriolet at the curb + STEAL prompt
+  drawCar(758, 470, 196, '#2e9ec4', { roof: '#1c6e8c', plate: 'AZR·CAB 2' });
+  rrect(620, 372, 236, 30, 7, 'rgba(8,12,26,0.92)');
+  txt('[ E ]  STEAL — Azure Cabriolet', 738, 392, 14, '#8dff9a', 'center', true);
+  // guard DOWN on the ground, second guard reacting
+  drawDownGuard(212, 482, 92);
+  txt('GUARD DOWN', 212, 428, 10.5, '#ffd94d', 'center', true);
+  drawPerson(408, 452, 96, '#e8b13a', '#2c4a73', '#8a5a3b', 'react');
+  txt('!', 408, 330, 30, '#ff5040', 'center', true);
+  txt('GUARD — “HEY! STOP!”', 408, 356, 10.5, '#ffb0a5', 'center', true);
+  // hero, over-shoulder: back of head, shoulders, jacket, raised arm
+  ctx.fillStyle = 'rgba(0,0,0,0.30)';
+  ctx.beginPath(); ctx.ellipse(500, 566, 190, 26, 0, 0, 7); ctx.fill();
+  poly([[330, 576], [368, 470], [430, 442], [570, 442], [632, 470], [672, 576]], '#24344f');
+  poly([[368, 470], [430, 442], [436, 576], [356, 576]], '#2e4a73');
+  poly([[570, 442], [632, 470], [648, 576], [566, 576]], '#2e4a73');
+  rect(478, 452, 44, 30, '#c98d64');
+  circle(500, 428, 40, '#3a2a20'); // hair
+  circle(500, 436, 37, '#c98d64'); // head from behind/side
+  poly([[500 - 37, 436], [500 + 37, 436], [500 + 30, 402], [500 - 30, 402]], '#3a2a20'); // hair cap
+  // raised right arm toward the cabriolet
+  ctx.strokeStyle = '#24344f'; ctx.lineWidth = 26; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(618, 486); ctx.lineTo(700, 452); ctx.stroke(); ctx.lineCap = 'butt';
+  circle(706, 450, 11, '#c98d64');
+  txt('YOU — on foot', 500, 560, 11, 'rgba(255,255,255,0.75)', 'center', true);
+  /* ---- HUD ---- */
+  missionCard(10, 10, 'DOCKSIDE LIFT', 'STAGE 2/3', 'Steal the Azure Cabriolet at the marina', 'Escape via Harborfront tunnel');
+  dispatch(752, 10, 'MBPD DISPATCH — FOOT PURSUIT', [
+    ['Unit 11 · J. Whitfield', 'FOOT CHASE', '95 m'],
+    ['Unit 4 · P. Nakamura', 'CLOSING IN', '140 m'],
+    ['Unit 16 · R. Calloway', 'FOOT CHASE', '180 m'],
+    ['K9-2 · D. Ferreira', 'TRACKING', '260 m'],
+    ['Unit 8 · S. Okafor', 'PERIMETER', '390 m'],
+  ]);
+  crewStack(10, 118, ['At the Pearl — getaway ready', 'With you — just dropped a guard', 'Van parked on Harborfront', 'Watching the market cameras']);
+  topBar('48,250', '19:57', 3, 'HUNTED — ON FOOT');
+  dialogue(10, 262, 'MAKO', '#54c8ff', '“Guard\'s down, cabriolet\'s right there.', 'Grab it — I\'ll hold the stall lane!”');
+  weaponChips(10, 520, [['PISTOL', '24 / 96'], ['FISTS', '—'], ['STICKY', '× 3']]);
+  radioLine(694, 540, 'RADIO SOL 98.1 — marina market live set');
+  minimap(934, 420, 56, [[-0.6, 0.55], [-0.2, 0.2], [0.3, -0.1], [0.6, -0.35]],
+    [[0.1, -0.5, 4], [0.6, -0.35, 5, '#ffd94d']], 'HARBORFRONT');
+}
 
-<div id="start-screen">
-  <h1>MARISOL BAY</h1>
-  <h2>EIGHT JOBS · ONE BAY · NO SECOND TAKES</h2>
-  <button id="start-btn">START ENGINE</button>
-  <p>WASD / arrows drive · Space brake · E get in or out · Shift run · M mute<br>
-  Steal cars, run Vera's eight jobs, and mind the MBPD stars.</p>
-</div>
+/* =====================================================================
+   SCENE 3 — MAP + STATS pause screen
+   ===================================================================== */
+function sceneMap() {
+  R = mulberry(SEED * 1000 + 303);
+  vgrad(0, 0, W, H, [[0, '#0e1a33'], [1, '#122544']]);
+  txt('PAUSED — CITY MAP', 24, 36, 20, '#fff', 'left', true);
+  txt('MARISOL BAY', 24, 58, 12, '#7df0ff', 'left', true);
+  // map area
+  const mx = 24, my = 74, mw = 620, mh = 420;
+  rrect(mx, my, mw, mh, 12, '#1d3a5f');
+  ctx.save(); rrect(mx, my, mw, mh, 12, '#1d3a5f'); ctx.clip();
+  // landmass
+  poly([[mx, my + 150], [mx + 190, my + 96], [mx + 420, my + 120], [mx + mw, my + 70],
+        [mx + mw, my + mh], [mx, my + mh]], '#2e6b4f');
+  poly([[mx, my + 150], [mx + 190, my + 96], [mx + 420, my + 120], [mx + mw, my + 70],
+        [mx + mw, my + 128], [mx + 300, my + 176], [mx + 90, my + 196], [mx, my + 210]], '#e8cf92');
+  // district tints
+  poly([[mx + 330, my + 130], [mx + 520, my + 110], [mx + mw, my + 140], [mx + mw, my + 250], [mx + 420, my + 260], [mx + 330, my + 210]], 'rgba(122,79,208,0.35)');
+  poly([[mx + 60, my + 220], [mx + 250, my + 200], [mx + 300, my + 320], [mx + 120, my + 360], [mx + 40, my + 300]], 'rgba(255,176,58,0.28)');
+  poly([[mx + 330, my + 270], [mx + 520, my + 260], [mx + mw, my + 300], [mx + mw, my + mh], [mx + 380, my + mh], [mx + 320, my + 340]], 'rgba(84,200,255,0.25)');
+  // roads
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(mx + 20, my + 330); ctx.lineTo(mx + 300, my + 210); ctx.lineTo(mx + 600, my + 150); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(mx + 180, my + 400); ctx.lineTo(mx + 260, my + 190); ctx.lineTo(mx + 330, my + 90); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(mx + 60, my + 160); ctx.lineTo(mx + 330, my + 250); ctx.lineTo(mx + 610, my + 300); ctx.stroke();
+  // route line
+  ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 4.5; ctx.setLineDash([10, 6]);
+  ctx.beginPath(); ctx.moveTo(mx + 120, my + 320); ctx.lineTo(mx + 260, my + 235); ctx.lineTo(mx + 430, my + 190); ctx.lineTo(mx + 540, my + 285); ctx.stroke();
+  ctx.setLineDash([]);
+  // icons
+  const icon = (x, y, c, ch) => { circle(x, y, 11, c); txt(ch, x, y + 4.5, 11, '#10131f', 'center', true); };
+  icon(mx + 120, my + 320, '#fff', 'P');
+  icon(mx + 430, my + 190, '#ffd94d', '★');
+  icon(mx + 540, my + 285, '#8dff9a', 'G');
+  icon(mx + 250, my + 130, '#ff7a59', 'R');
+  icon(mx + 90, my + 250, '#7df0ff', 'S');
+  icon(mx + 500, my + 350, '#f2b8ff', 'M');
+  // district labels
+  const lab = (x, y, s, c) => { txt(s, x, y, 13, c || '#fff', 'center', true); };
+  lab(mx + 180, my + 176, 'THE STRAND');
+  lab(mx + 480, my + 168, 'CASINO ROW');
+  lab(mx + 250, my + 96, 'AZURE PEARL');
+  lab(mx + 470, my + 330, 'HARBORFRONT · PIER 9');
+  lab(mx + 150, my + 300, 'SOLANO HEIGHTS');
+  lab(mx + 330, my + 386, 'OLD TOWN MARISOL');
+  txt('MARISOL BAY — open water', mx + 120, my + 40, 11, '#a8dcff');
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(140,220,255,0.4)'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(mx + 0.5, my + 0.5, mw - 1, mh - 1);
+  // legend
+  panel(mx, my + mh + 10, mw, 62, 0.8);
+  txt('LEGEND', mx + 12, my + mh + 30, 11, '#7df0ff', 'left', true);
+  const leg = [['P', '#fff', 'You'], ['★', '#ffd94d', 'Mission'], ['G', '#8dff9a', 'Garage'], ['R', '#ff7a59', 'Race'], ['S', '#7df0ff', 'Safehouse'], ['M', '#f2b8ff', 'Market']];
+  leg.forEach((l, i) => {
+    const lx = mx + 14 + i * 100;
+    circle(lx + 8, my + mh + 46, 9, l[1]); txt(l[0], lx + 8, my + mh + 50, 10, '#10131f', 'center', true);
+    txt(l[2], lx + 22, my + mh + 50, 10.5, '#dceaff');
+  });
+  txt('ROUTE: Pearl Heist getaway → Pier 9 garage (0.8 km)', mx + 330, my + mh + 30, 11, '#ffd94d');
+  // side panels
+  const sx = 664, sw = 336;
+  panel(sx, 74, sw, 168, 0.85);
+  txt('STORY — PEARL HEIST ARC', sx + 14, 96, 12, '#ffb03a', 'left', true);
+  const chk = [['Meet Vera at The Strand', 'DONE'], ['Lift the Azure Cabriolet', 'DONE'], ['Crack the Pearl vault', 'DONE'],
+               ['Getaway down The Strand', 'NEXT'], ['Fence the take at Pier 9', '—'], ['Casino Row finale', '—']];
+  chk.forEach((c, i) => {
+    const cy = 118 + i * 19;
+    txt(c[1] === 'DONE' ? '✓' : c[1] === 'NEXT' ? '▶' : '·', sx + 16, cy, 12, c[1] === 'DONE' ? '#8dff9a' : c[1] === 'NEXT' ? '#ffd94d' : '#5f7296', 'left', true);
+    txt(c[0], sx + 34, cy, 11.5, c[1] === '—' ? '#8fa5c8' : '#fff');
+    txt(c[1], sx + sw - 14, cy, 10.5, c[1] === 'NEXT' ? '#ffd94d' : '#7df0ff', 'right', true);
+  });
+  txt('STORY COMPLETION', sx + 14, 234, 10.5, '#bcd6f5');
+  rect(sx + 130, 226, 150, 9, '#2a3350'); rect(sx + 130, 226, 150 * 0.62, 9, '#ffb03a');
+  txt('62%', sx + sw - 14, 234, 11, '#ffb03a', 'right', true);
+  panel(sx, 252, sw, 126, 0.85);
+  txt('CAREER STATS', sx + 14, 274, 12, '#ffb03a', 'left', true);
+  const stats = [['Cars stolen', '27'], ['Wanted stars lost', '41'], ['Races won', '9 / 14'], ['Distance driven', '312 km'], ['Cash earned', '$ 96,400'], ['Missions done', '18 / 29']];
+  stats.forEach((s, i) => {
+    const cy = 293 + i * 16.5;
+    txt(s[0], sx + 14, cy, 11.5, '#dceaff');
+    txt(s[1], sx + sw - 14, cy, 11.5, '#fff', 'right', true);
+  });
+  panel(sx, 386, sw, 84, 0.85);
+  txt('CREW ROSTER', sx + 14, 408, 12, '#ffb03a', 'left', true);
+  CREW.forEach((c, i) => {
+    const cy = 428 + i * 14.5;
+    circle(sx + 20, cy - 4, 6, c.col);
+    txt(c.name, sx + 34, cy, 11, '#fff', 'left', true);
+    txt(c.role, sx + 110, cy, 11, '#bcd6f5');
+    txt(i === 0 ? 'LOYAL' : i === 3 ? 'SHARP' : 'READY', sx + sw - 14, cy, 10, '#8dff9a', 'right', true);
+  });
+  panel(sx, 478, sw, 84, 0.85);
+  txt('SAVE SLOTS', sx + 14, 500, 12, '#ffb03a', 'left', true);
+  txt('SLOT 1 — Pearl Heist, Stage 3/4 · $48,250 · 62%', sx + 14, 524, 11, '#fff');
+  txt('SLOT 2 — Harborfront free roam · $12,900 · 24%', sx + 14, 542, 11, '#bcd6f5');
+  txt('SLOT 3 — Empty', sx + 14, 558, 11, '#5f7296');
+}
 
-<script type="module" src="./src/main.js"></script>
+/* =====================================================================
+   SCENE 4 — TITLE SCREEN
+   ===================================================================== */
+function sceneTitle() {
+  R = mulberry(SEED * 1000 + 404);
+  boulevardSky('golden');
+  const horizon = 250;
+  rect(0, horizon, W, H - horizon, '#7c828e'); // ground base — no empty corners
+  vgrad(0, horizon - 20, 250, 90, [[0, '#2e7fc4'], [1, '#63c2e8']]);
+  poly([[0, horizon + 44], [330, horizon + 22], [300, H], [0, H]], '#f0d79a');
+  drawTower(726, horizon + 22, 76, 180, '#5a6f9e', 0.55, 'AZURE PEARL');
+  drawTower(810, horizon + 26, 68, 140, '#74628f', 0.5);
+  drawTower(884, horizon + 28, 84, 205, '#66779f', 0.6, 'CASINO ROW');
+  drawTower(660, horizon + 18, 58, 118, '#4c5f8a', 0.45, 'HOTEL SOLANO');
+  drawTower(360, horizon + 12, 46, 88, '#5d6f9c', 0.4);
+  roadPerspective(horizon, 268, 986, 452, 588, '#404654');
+  poly([[452, horizon], [268, H], [150, H], [330, horizon]], '#9aa0ad');
+  poly([[588, horizon], [986, H], [1024, H], [700, horizon]], '#9aa0ad');
+  drawPalm(310, 340, 128, -1); drawPalm(214, 452, 178, -1); drawPalm(716, 330, 112, 1); drawPalm(828, 446, 168, 1);
+  drawPerson(300, 428, 54, '#ffd94d', '#33507e', '#c98d64', 'walk');
+  drawPerson(884, 420, 52, '#54c8ff', '#444', '#8a5a3b', 'walk');
+  // scene cast: hero car, cruiser, helicopter
+  drawHeli(150, 166, 84, null);
+  drawCar(700, 356, 118, '#e8ecf2', { police: true, roof: '#31456b', flash: true, plate: 'MBPD·05' });
+  drawCar(505, 486, 268, '#d8232f', { spoiler: true, roof: '#8f1420', plate: 'VNT·GT 1' });
+  drawCar(648, 398, 92, '#e0a83c', { plate: 'TAXI·44' });
+  // logotype
+  ctx.fillStyle = 'rgba(10,8,30,0.35)'; ctx.fillRect(0, 18, W, 128);
+  txt('MARISOL BAY', 512, 92, 64, '#fff', 'center', true, 'Georgia,"Times New Roman",serif');
+  txt('an original open-world crime story', 512, 122, 17, '#ffd94d', 'center', false, 'Georgia,serif');
+  // menu
+  panel(56, 196, 330, 108, 0.95);
+  rect(56, 196, 5, 108, '#8dff9a');
+  txt('CONTINUE', 76, 226, 17, '#fff', 'left', true);
+  txt('Pearl Heist — Stage 3/4 · The Strand getaway', 76, 250, 12, '#dceaff');
+  txt('Story 62% · Cash $48,250 · Rank: Bay Runner', 76, 270, 12, '#8dff9a');
+  txt('Last saved 18:41 — Slot 1', 76, 290, 11, '#bcd6f5');
+  panel(56, 316, 330, 46, 0.95);
+  txt('NEW GAME', 76, 345, 16, '#fff', 'left', true);
+  txt('Start a new story in Marisol Bay', 190, 345, 11.5, '#bcd6f5');
+  panel(56, 374, 330, 46, 0.95);
+  txt('SETTINGS', 76, 403, 16, '#fff', 'left', true);
+  txt('Audio · Display · Controls', 190, 403, 11.5, '#bcd6f5');
+  // save-slot cards
+  const slots = [['SLOT 1', 'Pearl Heist · 62%', '$48,250'], ['SLOT 2', 'Free roam · 24%', '$12,900'], ['SLOT 3', 'Empty', '—']];
+  slots.forEach((s, i) => {
+    const sx = 56 + i * 112;
+    panel(sx, 434, 104, 62, 0.92);
+    txt(s[0], sx + 10, 456, 11, '#7df0ff', 'left', true);
+    txt(s[1], sx + 10, 474, 9.5, '#fff');
+    txt(s[2], sx + 10, 490, 10, '#8dff9a');
+  });
+  txt('WASD / Arrows — drive & walk · E — enter / steal · F — on foot · M — map · Esc — pause', 512, 556, 12.5, '#fff', 'center', true);
+  txt('© 2026 Marisol Bay contributors — an original work, not affiliated with any other game series.', 512, 574, 9.5, 'rgba(255,255,255,0.65)', 'center');
+}
+/* =====================================================================
+   PLAYABLE GAME — free-roam Marisol Bay
+   Drive with WASD/arrows, F toggles on-foot, E steals/enters the parked
+   cabriolet on foot, M opens the map, Esc pauses. Wanted stars rise with
+   speed and near misses; reach the Pier 9 marker to finish the getaway.
+   ===================================================================== */
+const G = {
+  mode: 'title', // title | drive | foot | map | done
+  px: 512, speed: 0, dist: 0, cash: 48250, stars: 2, cond: 92,
+  fx: 500, fy: 430, t: 0, msg: '', msgT: 0, stage: 3, won: 0,
+  traffic: [], police: [], keys: {},
+};
+for (let i = 0; i < 5; i++) G.traffic.push({ x: 340 + i * 90, y: 300 + i * 46, v: 26 + i * 7, c: ['#e0a83c', '#7a4fd0', '#3fa7a0', '#e8ecf2', '#54c8ff'][i] });
+for (let i = 0; i < 3; i++) G.police.push({ x: 300 + i * 190, y: 500, sway: i * 2.1 });
+addEventListener('keydown', e => {
+  G.keys[e.key.toLowerCase()] = true;
+  const k = e.key.toLowerCase();
+  if (G.mode === 'title' && (k === 'enter' || k === ' ')) G.mode = 'drive';
+  else if (k === 'm' && (G.mode === 'drive' || G.mode === 'foot')) G.mode = 'map';
+  else if ((k === 'm' || k === 'escape') && G.mode === 'map') G.mode = G.fx != null && G.onFoot ? 'foot' : 'drive';
+  else if (k === 'f' && G.mode === 'drive') { G.mode = 'foot'; G.onFoot = true; G.fx = G.px; G.fy = 470; }
+  else if (k === 'f' && G.mode === 'foot') { G.mode = 'drive'; G.onFoot = false; }
+  else if (k === 'e' && G.mode === 'foot') {
+    G.cash += 2500; G.won++; G.stars = Math.min(5, G.stars + 1);
+    G.msg = 'Azure Cabriolet stolen! +$2,500 — now RUN.'; G.msgT = 200;
+    G.mode = 'drive'; G.onFoot = false;
+  }
+  if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
+});
+addEventListener('keyup', e => { G.keys[e.key.toLowerCase()] = false; });
+cv.addEventListener('click', () => { if (G.mode === 'title') G.mode = 'drive'; if (G.mode === 'done') { G.mode = 'drive'; G.dist = 0; G.stage = 3; } });
+
+function playFrame(dt) {
+  G.t += dt;
+  const k = G.keys;
+  if (G.mode === 'map') { sceneMap(); return; }
+  if (G.mode === 'title') { sceneTitle(); txt('PRESS ENTER OR CLICK TO PLAY', 512, 530, 15, '#fff', 'center', true); return; }
+  // --- update ---
+  if (G.mode === 'drive') {
+    if (k['w'] || k['arrowup']) G.speed = Math.min(168, G.speed + 60 * dt);
+    else if (k['s'] || k['arrowdown']) G.speed = Math.max(0, G.speed - 90 * dt);
+    else G.speed = Math.max(0, G.speed - 12 * dt);
+    if (k['a'] || k['arrowleft']) G.px = Math.max(300, G.px - 260 * dt);
+    if (k['d'] || k['arrowright']) G.px = Math.min(730, G.px + 260 * dt);
+    G.dist += G.speed * dt / 1000;
+    if (G.speed > 110 && R() < dt * 0.25) G.stars = Math.min(5, G.stars + 0.02);
+    if (G.dist > 0.8 && G.stage === 3) { G.stage = 4; G.msg = 'Final stage: reach the Pier 9 garage!'; G.msgT = 220; }
+    if (G.dist > 1.6) { G.mode = 'done'; G.cash += 10000; }
+  } else if (G.mode === 'foot') {
+    const sp = 130 * dt;
+    if (k['w'] || k['arrowup']) G.fy = Math.max(300, G.fy - sp);
+    if (k['s'] || k['arrowdown']) G.fy = Math.min(520, G.fy + sp);
+    if (k['a'] || k['arrowleft']) G.fx = Math.max(120, G.fx - sp);
+    if (k['d'] || k['arrowright']) G.fx = Math.min(900, G.fx + sp);
+    G.speed = 0;
+  }
+  G.traffic.forEach((c, i) => {
+    c.y += (30 + G.speed * 0.35 - c.v) * dt * (G.mode === 'drive' ? 1 : 0.3);
+    if (c.y > 600) { c.y = 250; c.x = 360 + ((i * 137 + G.t * 40) % 320); }
+    if (c.y < 230) c.y = 590;
+    if (G.mode === 'drive' && Math.abs(c.y - 520) < 42 && Math.abs(c.x - G.px) < 95) {
+      G.cond = Math.max(12, G.cond - 14 * dt); G.stars = Math.min(5, G.stars + dt * 0.3);
+    }
+  });
+  if (G.msgT > 0) G.msgT -= dt * 60;
+  // --- render: live boulevard ---
+  R = mulberry(99);
+  boulevardSky('golden');
+  const horizon = 218;
+  rect(0, horizon, W, H - horizon, '#7c828e');
+  vgrad(0, horizon - 30, 300, 130, [[0, '#2e7fc4'], [1, '#63c2e8']]);
+  poly([[0, horizon + 58], [330, horizon + 30], [300, H], [0, H]], '#f0d79a');
+  drawTower(742, horizon + 26, 74, 168, '#5a6f9e', 0.55, 'AZURE PEARL');
+  drawTower(892, horizon + 34, 80, 196, '#66779f', 0.6, 'CASINO ROW');
+  drawTower(676, horizon + 22, 60, 118, '#4c5f8a', 0.45, 'HOTEL SOLANO');
+  roadPerspective(horizon, 268, 986, 452, 588, '#404654');
+  poly([[452, horizon], [268, H], [150, H], [330, horizon]], '#9aa0ad');
+  poly([[588, horizon], [986, H], [1024, H], [700, horizon]], '#9aa0ad');
+  drawPalm(238, 430, 165, -1); drawPalm(806, 420, 150, 1);
+  rrect(596, 236, 118, 22, 4, 'rgba(8,20,40,0.9)');
+  txt('THE STRAND →', 655, 251, 12, '#7df0ff', 'center', true);
+  if (G.stage >= 4) { // Pier 9 garage marker ahead
+    rrect(478, 238, 92, 30, 5, 'rgba(10,40,20,0.92)');
+    txt('PIER 9 ⛽', 524, 258, 13, '#8dff9a', 'center', true);
+  }
+  drawHeli(648 + Math.sin(G.t * 0.6) * 26, 118, 110, G.mode === 'drive' ? [G.px, 330] : null);
+  G.traffic.forEach(c => drawCar(c.x, c.y, 60 + (c.y - 240) * 0.22, c.c, { plate: 'MB·' + Math.floor(c.v * 10) }));
+  G.police.forEach((p, i) => {
+    const txp = G.px + (i - 1) * 235, typ = 486 + Math.sin(G.t * 2 + p.sway) * 5;
+    drawCar(txp, typ, 205, '#e8ecf2', { police: true, roof: '#31456b', flash: true, plate: 'MBPD·0' + (3 + i * 2) });
+  });
+  if (G.mode === 'drive') {
+    drawCar(G.px, 548, 330, '#d8232f', { spoiler: true, roof: '#8f1420', plate: 'VNT·GT 1' });
+  } else {
+    drawCar(G.px, 548, 300, '#d8232f', { spoiler: true, roof: '#8f1420', plate: 'VNT·GT 1' });
+    drawCar(742, 470, 180, '#2e9ec4', { roof: '#1c6e8c', plate: 'AZR·CAB 2' });
+    if (Math.abs(G.fx - 742) < 190 && Math.abs(G.fy - 470) < 90) {
+      rrect(G.fx - 118, G.fy - 108, 236, 30, 7, 'rgba(8,12,26,0.92)');
+      txt('[ E ]  STEAL — Azure Cabriolet', G.fx, G.fy - 88, 13, '#8dff9a', 'center', true);
+    }
+    drawPerson(G.fx, G.fy, 92, '#24344f', '#1c2739', '#c98d64', (k['w'] || k['a'] || k['s'] || k['d']) ? 'run' : 'walk');
+  }
+  // HUD (live values)
+  const hh = String(18 + Math.floor(G.t / 120)).padStart(2, '0'), mm = String(Math.floor(G.t / 2) % 60).padStart(2, '0');
+  missionCard(10, 10, 'PEARL HEIST: GETAWAY', 'STAGE ' + G.stage + '/4',
+    G.mode === 'foot' ? 'On foot — steal a car or return to the Vantara' : 'Lose the MBPD tail on The Strand',
+    G.stage >= 4 ? 'Pier 9 garage — ' + Math.max(0, 1.6 - G.dist).toFixed(1) + ' km' : 'Pier 9 garage — ' + (0.8 - Math.min(0.8, G.dist)).toFixed(1) + ' km to final stage');
+  dispatch(752, 10, 'MBPD DISPATCH — PURSUIT', [
+    ['Unit 3 · R. Calloway', G.speed > 90 ? 'RAMMING' : 'PURSUING', Math.max(8, Math.round(30 - G.speed * 0.12)) + ' m'],
+    ['AIR-1 · S. Okafor', 'SPOTLIGHT', '60 m'],
+    ['Unit 7 · D. Ferreira', 'FLANKING', '18 m'],
+    ['Unit 5 · A. Petrov', 'PIT MANEUVER', '52 m'],
+  ]);
+  crewStack(10, 118, null);
+  topBar(G.cash.toLocaleString('en-US'), hh + ':' + mm, Math.floor(G.stars), G.stars >= 4 ? 'IN SIGHT' : 'HUNTED');
+  weaponChips(10, 520, [['PISTOL', '24 / 96'], ['SMG', '61 / 240'], ['STICKY', '× 3']]);
+  vehicleCard(806, 500, 'VANTARA GT', Math.round(G.cond), Math.round(G.speed));
+  radioLine(10, 486, 'RADIO SOL 98.1 — “Neon Palms” by Coastline Club');
+  minimap(934, 288, 56, [[-0.7, 0.6], [-0.3, 0.3], [0.05, 0.05], [0.55, -0.3]],
+    [[-0.25, 0.18, 4], [0.28, 0.12, 4]], 'THE STRAND');
+  if (G.msgT > 0 && G.msg) { panel(300, 470, 424, 34, 0.85); txt(G.msg, 512, 492, 13, '#8dff9a', 'center', true); }
+  if (G.mode === 'done') {
+    panel(312, 220, 400, 130, 0.92);
+    txt('GETAWAY COMPLETE!', 512, 262, 24, '#8dff9a', 'center', true);
+    txt('The Pearl take is fenced at Pier 9. +$10,000', 512, 292, 13, '#fff', 'center');
+    txt('Click to free-roam Marisol Bay again', 512, 322, 12, '#bcd6f5', 'center');
+  }
+}
+
+/* ---------- boot ---------- */
+if (SHOT === 'chase') sceneChase();
+else if (SHOT === 'foot') sceneFoot();
+else if (SHOT === 'map') sceneMap();
+else if (SHOT === 'title') sceneTitle();
+else {
+  let last = performance.now();
+  const loop = now => {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    playFrame(dt);
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+</script>
 </body>
 </html>

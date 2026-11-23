@@ -1,1 +1,6 @@
-[{"name":"1-beach-chase.jpg","query":"?shot=beach&seed=7"},{"name":"2-downtown-mission.jpg","query":"?shot=downtown&seed=7"},{"name":"3-day-foot.jpg","query":"?shot=plaza&seed=7"},{"name":"4-night-harbor.jpg","query":"?shot=harbor&seed=7"}]
+[
+  { "name": "1-hero-chase.jpg", "query": "?shot=chase&seed=7" },
+  { "name": "2-marina-foot.jpg", "query": "?shot=foot&seed=7" },
+  { "name": "3-map-stats.jpg", "query": "?shot=map&seed=7" },
+  { "name": "4-title.jpg", "query": "?shot=title&seed=7" }
+]
