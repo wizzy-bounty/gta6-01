@@ -1,98 +1,96 @@
-// Mission chain: steal → lose the heat → deliver. Plus free-roam jobs after.
+// MARISOL BAY — the three-stage story mission: objectives, the gold beacon,
+// crew dialogue beats and rewards.
+import * as THREE from 'three';
 import { MISSIONS } from './config.js';
-import { blip } from './audio.js';
+import { dist2 } from './random.js';
 
-export class Missions {
-  constructor(onDialogue, onFeed, onEvent) {
-    this.idx = 0;
-    this.state = 'objective'; // objective | done | failed
-    this.timer = 0;
-    this.evadeTimer = 0;
-    this.deliverTimer = 150;
-    this.onDialogue = onDialogue;
-    this.onFeed = onFeed;
-    this.onEvent = onEvent; // (kind, payload)
-    this.started = false;
-    this.payout = 0;
+export class MissionDirector {
+  constructor(scene) {
+    this.scene = scene;
+    this.stage = 0; // 0 = not started
+    this.done = false;
+    this.cash = 0;
+    this.dialogIdx = 0;
+    this.dialogTimer = 0;
+    // gold beacon: a glowing column + pulsing ground ring at the objective
+    const colMat = new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false });
+    this.beacon = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 60, 16, 1, true), colMat);
+    this.beacon.visible = false;
+    scene.add(this.beacon);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+    this.ring = new THREE.Mesh(new THREE.RingGeometry(2.4, 3.2, 32), ringMat);
+    this.ring.rotation.x = -Math.PI / 2;
+    this.ring.visible = false;
+    scene.add(this.ring);
   }
 
-  get current() { return MISSIONS[this.idx]; }
-  get target() { return this.current.target; }
+  current() {
+    return MISSIONS[this.stage - 1] || null;
+  }
 
   start() {
-    this.started = true;
-    this.playDialogue();
-    this.onFeed('JOB ACCEPTED — ' + this.current.title, 'job');
+    this.stage = 1;
+    this.done = false;
+    this.dialogIdx = 0;
+    this.dialogTimer = 0;
+    const m = this.current();
+    this.beacon.position.set(m.target.x, 30, m.target.z);
+    this.beacon.visible = true;
+    this.ring.position.set(m.target.x, 0.1, m.target.z);
+    this.ring.visible = true;
+    return m;
   }
 
-  playDialogue() {
-    for (const line of this.current.dialogue) this.onDialogue(line.who, line.text);
+  restart() {
+    this.start();
+    return this.current();
   }
 
-  // Called every frame; returns nothing, fires events.
-  update(dt, px, pz, wanted, inTargetCar, playerSpeed) {
-    if (!this.started || this.state === 'done') return;
-    this.timer += dt;
-    const m = this.current;
-    const dTarget = Math.hypot(m.target.x - px, m.target.z - pz);
-    if (this.idx === 0) {
-      // steal the Vantara GT: reach the casino forecourt and take the car
-      if (dTarget < 12 && !inTargetCar) {
-        this.onEvent('prompt', 'Press E to take the Vantara GT');
-      }
-      if (inTargetCar) {
-        this.complete('STOLEN — the Vantara GT is yours. MBPD is on the way.');
-        this.idx = 1;
-        this.evadeTimer = 0;
-        this.onEvent('wanted', 4);
-        this.playDialogue();
-      }
-    } else if (this.idx === 1) {
-      // lose the heat: survive until wanted <= 1
-      if (wanted <= 1) {
-        this.complete('HEAT LOST — nice driving. Now get her to Pier 9.');
-        this.idx = 2;
-        this.deliverTimer = 150;
-        this.playDialogue();
-      } else {
-        this.evadeTimer += dt;
-        if (this.evadeTimer > 120) {
-          this.onEvent('wanted', -1); // pressure valve: heat eases over time
-          this.evadeTimer = 0;
-        }
-      }
-    } else if (this.idx === 2) {
-      this.deliverTimer -= dt;
-      if (dTarget < 14 && inTargetCar) {
-        this.complete('DELIVERED — $18,450. Vera has the next job.');
-        this.state = 'done';
-        this.payout = 18450;
-        this.onEvent('paid', 18450);
-        return;
-      }
-      if (this.deliverTimer <= 0) {
-        this.state = 'failed';
-        this.onEvent('failed', 'The buyer walked. Vera will call again.');
-      }
+  // Returns 'advanced' | 'complete' | null. Emits dialogue through the callback.
+  update(dt, t, px, pz, onDialog, onEvent) {
+    const m = this.current();
+    if (!m || this.done) return null;
+    this.dialogTimer += dt;
+    // drip-feed the stage's dialogue lines
+    if (this.dialogIdx < m.dialog.length && this.dialogTimer > 4 + this.dialogIdx * 7) {
+      const [who, line] = m.dialog[this.dialogIdx];
+      onDialog(who, line);
+      this.dialogIdx++;
     }
+    // beacon pulse
+    const s = 1 + Math.sin(t * 3) * 0.12;
+    this.ring.scale.set(s, s, 1);
+    this.beacon.material.opacity = 0.16 + Math.sin(t * 3) * 0.06;
+    if (dist2(px, pz, m.target.x, m.target.z) < 9) {
+      this.cash += m.reward;
+      onEvent(`STAGE ${m.stage} COMPLETE — +$${m.reward}`, 'good');
+      if (this.stage >= MISSIONS.length) {
+        this.done = true;
+        this.beacon.visible = false;
+        this.ring.visible = false;
+        return 'complete';
+      }
+      this.stage++;
+      this.dialogIdx = 0;
+      this.dialogTimer = 0;
+      const next = this.current();
+      this.beacon.position.set(next.target.x, 30, next.target.z);
+      this.ring.position.set(next.target.x, 0.1, next.target.z);
+      return 'advanced';
+    }
+    return null;
   }
 
-  complete(text) {
-    this.onFeed(text, 'good');
-    blip(1320);
-    this.onEvent('stage', this.idx + 1);
+  objectiveText() {
+    const m = this.current();
+    if (!m) return 'Press START to play';
+    if (this.done) return 'JOB DONE — the GT is at Pier 9. Vera is counting the money.';
+    return m.objective;
   }
 
-  reset() {
-    this.idx = 0; this.state = 'objective'; this.timer = 0;
-    this.evadeTimer = 0; this.deliverTimer = 150; this.payout = 0;
-    this.started = false;
-  }
-
-  progress01() {
-    if (this.idx === 0) return 0.12;
-    if (this.idx === 1) return 0.45;
-    if (this.idx === 2) return 0.72 + Math.max(0, 0.28 * (1 - this.deliverTimer / 150));
-    return 1;
+  stageTitle() {
+    const m = this.current();
+    if (!m) return 'MARISOL BAY';
+    return this.done ? 'JOB COMPLETE' : m.title;
   }
 }

@@ -4,178 +4,76 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
-<title>MARISOL BAY — an open-world crime game</title>
+<title>MARISOL BAY — open-world crime game</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  html,body { width:100%; height:100%; overflow:hidden; background:#0a0e14; font-family:Arial, Helvetica, sans-serif; }
-  #app { position:fixed; inset:0; }
-  canvas.webgl { display:block; width:100%; height:100%; }
-  .panel { background:rgba(8,12,18,0.82); border:1px solid rgba(255,255,255,0.14); border-radius:8px;
-    color:#fff; backdrop-filter:blur(2px); box-shadow:0 2px 14px rgba(0,0,0,0.45); }
-  .hidden { display:none !important; }
-  /* mission card */
-  #mission { position:absolute; top:14px; left:14px; width:348px; padding:10px 12px 11px; }
-  #mission-code { color:#ffd23e; font-weight:900; font-size:13px; letter-spacing:0.5px; }
-  #mission-stage { float:right; background:#ffd23e; color:#111; font-weight:900; font-size:11px; padding:2px 7px; border-radius:4px; }
-  #mission-bar-wrap { height:5px; background:rgba(255,255,255,0.18); border-radius:3px; margin:7px 0 6px; overflow:hidden; }
-  #mission-bar { height:100%; width:12%; background:linear-gradient(90deg,#37e0ff,#37d67a); }
-  #mission-objective { font-size:19px; font-weight:900; line-height:1.15; }
-  #mission-next { font-size:12px; color:#bcd2e8; margin-top:5px; }
-  #mission-next b { color:#37e0ff; }
-  #feed { position:absolute; top:158px; left:14px; width:348px; }
-  .feed-item { background:rgba(8,12,18,0.72); border-left:3px solid #37e0ff; color:#dfe9f2; font-size:12px;
-    padding:5px 9px; margin-top:4px; border-radius:4px; }
-  .feed-item.good { border-left-color:#37d67a; color:#c9f5d8; }
-  .feed-item.job { border-left-color:#ffd23e; color:#ffe9a8; }
-  /* dispatch roster */
-  #roster-panel { position:absolute; top:262px; left:14px; width:282px; padding:9px 11px; }
-  #roster-head { font-size:12px; font-weight:900; letter-spacing:0.5px; color:#ff8a7a; margin-bottom:6px; }
-  #roster-head span { color:#fff; }
-  .unit { display:flex; gap:6px; font-size:12.5px; padding:3px 0; border-top:1px solid rgba(255,255,255,0.07); align-items:baseline; }
-  .u-dot { font-size:10px; } .red{color:#ff5a4e;} .blue{color:#5aa8ff;} .yellow{color:#ffd23e;} .cyan{color:#37e0ff;}
-  .u-id { font-weight:900; width:74px; }
-  .u-role { font-weight:700; font-size:11px; flex:1; }
-  .u-dist { color:#bcd2e8; }
-  .unit.more { color:#9fb4c8; font-size:11.5px; }
-  /* top right */
-  #top-right { position:absolute; top:14px; right:14px; text-align:right; }
-  #money { font-size:34px; font-weight:900; color:#37e0ff; text-shadow:0 2px 8px rgba(0,0,0,0.6); }
-  #clock { font-size:15px; font-weight:700; color:#fff; }
-  #stars { font-size:22px; letter-spacing:3px; margin-top:2px; }
-  .star { color:rgba(255,255,255,0.25); text-shadow:0 0 6px rgba(0,0,0,0.5); }
-  .star.on { color:#ffd23e; }
-  #air-tag { background:#ff4040; color:#fff; font-weight:900; font-size:12px; padding:3px 8px; border-radius:4px; margin-top:5px; display:inline-block; }
-  #wanted-label { font-size:11px; color:#ffb0a8; font-weight:700; margin-top:4px; letter-spacing:1px; }
-  /* right column: weapons + crew */
-  #right-col { position:absolute; top:170px; right:14px; width:208px; }
-  #weapons { display:flex; flex-direction:column; gap:5px; }
-  .wslot { display:flex; align-items:center; gap:8px; background:rgba(8,12,18,0.82); border:1px solid rgba(255,255,255,0.14);
-    border-radius:6px; padding:6px 9px; color:#fff; cursor:pointer; }
-  .wslot.active { border-color:#ffd23e; background:rgba(60,48,8,0.85); }
-  .wkey { background:#fff; color:#111; font-weight:900; font-size:11px; width:18px; height:18px; border-radius:4px;
-    display:flex; align-items:center; justify-content:center; }
-  .wname { font-weight:900; font-size:13px; flex:1; }
-  .wammo { font-size:12px; color:#bcd2e8; font-weight:700; }
-  #fixer-card { margin-top:8px; padding:9px 10px; display:flex; gap:9px; align-items:center; }
-  .avatar { width:34px; height:34px; border-radius:6px; display:flex; align-items:center; justify-content:center;
-    font-weight:900; font-size:16px; color:#fff; flex:none; }
-  .avatar.big { width:44px; height:44px; font-size:20px; }
-  .crew-info { flex:1; min-width:0; }
-  .crew-rank { color:#37e0ff; font-weight:900; font-size:11px; }
-  .crew-name { font-weight:900; font-size:13px; }
-  .crew-role { font-size:11px; color:#bcd2e8; }
-  .rank-bar { height:5px; background:rgba(255,255,255,0.18); border-radius:3px; margin-top:4px; overflow:hidden; }
-  .rank-bar i { display:block; height:100%; background:#37e0ff; }
-  #crew { margin-top:8px; display:flex; flex-direction:column; gap:5px; }
-  .crew-card { display:flex; gap:9px; align-items:center; background:rgba(8,12,18,0.82); border:1px solid rgba(255,255,255,0.14);
-    border-radius:6px; padding:7px 9px; color:#fff; }
-  .crew-ability { font-weight:900; font-size:12px; color:#ffd23e; }
-  .crew-key { background:rgba(255,255,255,0.2); border-radius:4px; font-size:11px; font-weight:900; padding:3px 6px; }
-  /* bottom left: minimap + vitals */
-  #bottom-left { position:absolute; left:14px; bottom:14px; }
-  #loc { margin-bottom:6px; }
-  #loc-name { font-size:21px; font-weight:900; color:#ffd23e; text-shadow:0 2px 6px rgba(0,0,0,0.7); letter-spacing:0.5px; }
-  #loc-sub { font-size:12px; color:#dfe9f2; text-shadow:0 1px 4px rgba(0,0,0,0.8); }
-  #district-bar-wrap { width:150px; height:4px; background:rgba(255,255,255,0.25); border-radius:2px; margin-top:4px; }
-  #district-bar { height:100%; background:#ffd23e; width:40%; }
-  #minimap { width:176px; height:176px; border-radius:10px; border:2px solid rgba(255,255,255,0.25); background:#10141a; }
-  #vitals { margin-top:7px; width:176px; }
-  .vital { display:flex; align-items:center; gap:7px; font-size:11px; font-weight:900; color:#fff; margin-top:4px; }
-  .vital .bar { flex:1; height:9px; background:rgba(255,255,255,0.2); border-radius:5px; overflow:hidden; }
-  .vital .bar i { display:block; height:100%; }
-  #hp-bar { background:#37d67a; } #ar-bar { background:#5aa8ff; }
-  /* dialogue */
-  #dialogue { position:absolute; left:50%; bottom:16px; transform:translateX(-50%); width:620px; padding:11px 14px;
-    display:flex; gap:12px; align-items:center; }
-  #dlg-avatar { width:46px; height:46px; font-size:20px; }
-  #dlg-name { font-weight:900; font-size:14px; color:#37e0ff; }
-  #dlg-role { font-size:11px; color:#bcd2e8; }
-  #dlg-text { font-size:15px; line-height:1.35; margin-top:3px; color:#fff; }
-  #dlg-hint { font-size:11px; color:#9fb4c8; margin-left:auto; white-space:nowrap; }
-  /* bottom right: speed */
-  #bottom-right { position:absolute; right:14px; bottom:14px; text-align:right; color:#fff; }
-  #radio { font-size:12px; color:#37e0ff; font-weight:700; text-shadow:0 1px 4px rgba(0,0,0,0.8); margin-bottom:4px; }
-  #speed { font-size:64px; font-weight:900; line-height:0.95; text-shadow:0 3px 10px rgba(0,0,0,0.65); }
-  #speed-unit { font-size:15px; font-weight:700; color:#dfe9f2; }
-  #car-name { font-size:16px; font-weight:900; color:#37e0ff; }
-  #car-cond-num { font-size:12px; color:#dfe9f2; }
-  .meter { width:190px; height:7px; background:rgba(255,255,255,0.22); border-radius:4px; overflow:hidden; margin:3px 0 3px auto; }
-  .meter i { display:block; height:100%; }
-  #car-cond { background:#37d67a; } #nitro-bar { background:#37e0ff; }
-  .meter-label { font-size:10px; font-weight:900; letter-spacing:1px; color:#bcd2e8; }
-  /* centre prompt + overlay */
-  #prompt { position:absolute; left:50%; top:58%; transform:translateX(-50%); background:rgba(8,12,18,0.85);
-    color:#ffd23e; font-weight:900; font-size:15px; padding:8px 16px; border-radius:6px; border:1px solid rgba(255,210,62,0.5); }
-  #overlay { position:absolute; inset:0; background:rgba(5,8,12,0.78); display:flex; flex-direction:column;
-    align-items:center; justify-content:center; color:#fff; z-index:20; text-align:center; padding:20px; }
-  #overlay-kind { color:#37e0ff; font-weight:900; letter-spacing:3px; font-size:13px; }
-  #overlay-title { font-size:52px; font-weight:900; margin:10px 0; letter-spacing:1px; }
-  #overlay-sub { font-size:17px; color:#dfe9f2; max-width:560px; line-height:1.5; }
-  #overlay-controls { margin-top:22px; font-size:13px; color:#9fb4c8; line-height:1.9; }
-  #overlay-controls b { color:#fff; }
-  #sound-hint { position:absolute; left:50%; bottom:120px; transform:translateX(-50%); color:rgba(255,255,255,0.55);
-    font-size:11px; text-shadow:0 1px 3px #000; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0a1420; font-family: "Trebuchet MS", "Segoe UI", Verdana, sans-serif; }
+  #app { position: fixed; inset: 0; }
+  canvas.game { display: block; width: 100%; height: 100%; }
+  .hud { position: absolute; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.85); pointer-events: none; user-select: none; }
+  #wanted { top: 14px; left: 16px; font-size: 30px; letter-spacing: 2px; color: #ffd23e; }
+  #wanted .dim { color: rgba(255,255,255,.28); }
+  #cash { top: 52px; left: 16px; font-size: 20px; font-weight: 700; color: #7dff9a; }
+  #speed { bottom: 18px; right: 18px; font-size: 44px; font-weight: 800; text-align: right; line-height: .9; }
+  #speed small { font-size: 15px; color: #cfe3ff; display: block; letter-spacing: 2px; }
+  #objective { top: 14px; left: 50%; transform: translateX(-50%); background: rgba(5,12,24,.72); border: 1px solid rgba(255,210,62,.7); border-radius: 8px; padding: 8px 18px; font-size: 17px; font-weight: 700; text-align: center; max-width: 560px; }
+  #objective .stage { display: block; font-size: 11px; letter-spacing: 3px; color: #ffd23e; }
+  #minimap { top: 14px; right: 16px; border: 2px solid rgba(255,255,255,.55); border-radius: 50%; background: rgba(5,12,24,.6); }
+  #roster { top: 168px; right: 16px; width: 228px; background: rgba(5,12,24,.72); border: 1px solid rgba(120,180,255,.45); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; line-height: 1.5; }
+  #roster h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: 2px; color: #8fc4ff; }
+  #roster .unit { display: flex; justify-content: space-between; }
+  #roster .unit .role { color: #ffd23e; }
+  #feed { bottom: 96px; right: 16px; width: 250px; font-size: 12.5px; text-align: right; line-height: 1.6; }
+  #feed div { background: rgba(5,12,24,.55); display: inline-block; padding: 2px 8px; border-radius: 5px; margin-top: 3px; }
+  #feed .hot { color: #ff8a7a; font-weight: 700; }
+  #feed .good { color: #7dff9a; }
+  #dialog { bottom: 96px; left: 16px; width: 380px; background: rgba(5,12,24,.72); border-left: 4px solid #ffd23e; border-radius: 6px; padding: 9px 12px; font-size: 14.5px; line-height: 1.45; }
+  #dialog .who { color: #ffd23e; font-weight: 800; letter-spacing: 1px; }
+  #weapons { bottom: 18px; left: 16px; display: flex; gap: 8px; }
+  #weapons .slot { width: 52px; height: 52px; border: 2px solid rgba(255,255,255,.4); border-radius: 8px; background: rgba(5,12,24,.6); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; color: #cfe3ff; }
+  #weapons .slot.active { border-color: #ffd23e; color: #ffd23e; }
+  #weapons .slot b { font-size: 19px; }
+  #loc { bottom: 18px; left: 50%; transform: translateX(-50%); font-size: 15px; letter-spacing: 2px; color: #eaf3ff; background: rgba(5,12,24,.55); padding: 4px 14px; border-radius: 6px; }
+  #toast { top: 96px; left: 50%; transform: translateX(-50%); font-size: 20px; font-weight: 800; color: #ffd23e; display: none; }
+  #start { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(6,18,38,.25) 0%, rgba(6,18,38,.88) 78%); color: #fff; text-align: center; pointer-events: auto; z-index: 10; }
+  #start h1 { font-size: 64px; margin: 0; letter-spacing: 6px; color: #ffd23e; text-shadow: 0 4px 24px rgba(0,0,0,.8); }
+  #start h2 { font-size: 19px; font-weight: 400; margin: 6px 0 0; color: #dfeaff; letter-spacing: 2px; }
+  #start p { max-width: 620px; font-size: 15px; line-height: 1.55; color: #cfe0ff; }
+  #start button { pointer-events: auto; cursor: pointer; margin-top: 14px; font-size: 21px; font-weight: 800; letter-spacing: 2px; color: #08131f; background: #ffd23e; border: 0; border-radius: 10px; padding: 14px 42px; }
+  #start .keys { font-size: 13px; color: #9db6d8; margin-top: 16px; line-height: 1.7; }
+  #paused { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(4,10,20,.65); color: #fff; font-size: 42px; font-weight: 800; letter-spacing: 6px; z-index: 9; }
 </style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
 </head>
 <body>
 <div id="app">
-  <div id="mission" class="panel">
-    <span id="mission-stage">STAGE 1/3</span>
-    <div id="mission-code">MISSION 1 · THE AZURE JOB</div>
-    <div id="mission-bar-wrap"><div id="mission-bar"></div></div>
-    <div id="mission-objective">Steal the Vantara GT from the Azure Pearl</div>
-    <div id="mission-next"><b>NEXT</b> Lose the heat on the Strand</div>
+  <div id="wanted" class="hud">○○○○○</div>
+  <div id="cash" class="hud">$ 0</div>
+  <div id="objective" class="hud"><span class="stage">MARISOL BAY</span><span id="objectiveText">Press START to play</span></div>
+  <canvas id="minimap" class="hud" width="150" height="150"></canvas>
+  <div id="roster" class="hud"><h3>MBPD DISPATCH</h3><div id="rosterBody">No units assigned.</div></div>
+  <div id="feed" class="hud"></div>
+  <div id="dialog" class="hud"><span class="who">VERA</span> — <span id="dialogText">Dax. One last job, then we're done. Get to the Azure Pearl.</span></div>
+  <div id="weapons" class="hud">
+    <div class="slot active" data-w="0"><b>🔫</b>PISTOL</div>
+    <div class="slot" data-w="1"><b>💥</b>SMG</div>
+    <div class="slot" data-w="2"><b>🧨</b>LAUNCHER</div>
   </div>
-  <div id="feed"></div>
-  <div id="roster-panel" class="panel">
-    <div id="roster-head">▲ MBPD DISPATCH &nbsp;<span id="roster-count">— STANDBY</span></div>
-    <div id="roster"></div>
-  </div>
-  <div id="top-right">
-    <div id="money">$2,450</div>
-    <div id="clock">17:41</div>
-    <div id="stars"></div>
-    <div id="air-tag" style="display:none">AIR UNIT DEPLOYED</div>
-    <div id="wanted-label">CLEAN</div>
-  </div>
-  <div id="right-col">
-    <div id="weapons"></div>
-    <div id="fixer-card" class="panel"></div>
-    <div id="crew"></div>
-  </div>
-  <div id="bottom-left">
-    <div id="loc"><div id="loc-name">THE STRAND</div><div id="loc-sub">Beachfront · Marisol Bay</div>
-      <div id="district-bar-wrap"><div id="district-bar"></div></div></div>
-    <canvas id="minimap" width="176" height="176"></canvas>
-    <div id="vitals">
-      <div class="vital"><span>HEALTH</span><div class="bar"><i id="hp-bar" style="width:72%"></i></div><span id="hp-num">72</span></div>
-      <div class="vital"><span>ARMOUR</span><div class="bar"><i id="ar-bar" style="width:55%"></i></div><span id="ar-num">55</span></div>
-    </div>
-  </div>
-  <div id="dialogue" class="panel hidden">
-    <div id="dlg-avatar" class="avatar">V</div>
-    <div style="flex:1; min-width:0">
-      <div><span id="dlg-name">VERA SOLANO</span> &nbsp;<span id="dlg-role">FIXER</span></div>
-      <div id="dlg-text"></div>
-    </div>
-    <div id="dlg-hint">CLICK / E · NEXT</div>
-  </div>
-  <div id="bottom-right">
-    <div id="radio">♪ Radio Marisol 97.4 — “Calle Sol” — Los Felinos</div>
-    <div><span id="speed">0</span> <span id="speed-unit">KM/H</span></div>
-    <div id="car-name">Vantara GT</div>
-    <div class="meter"><i id="car-cond" style="width:100%"></i></div>
-    <div><span class="meter-label">CONDITION</span> <span id="car-cond-num">100% CLEAN</span></div>
-    <div class="meter"><i id="nitro-bar" style="width:80%"></i></div>
-    <div><span class="meter-label">NITRO</span></div>
-  </div>
-  <div id="prompt" class="hidden"></div>
-  <div id="sound-hint">WASD drive · E enter / exit car · F steal · SPACE handbrake · 1–4 weapons · Q/Z/X/C crew · M radio · click for sound</div>
-  <div id="overlay" class="hidden">
-    <div id="overlay-kind">MARISOL BAY</div>
-    <div id="overlay-title"></div>
-    <div id="overlay-sub"></div>
-    <div id="overlay-controls"></div>
+  <div id="speed" class="hud">0<small>MPH</small></div>
+  <div id="loc" class="hud">THE STRAND</div>
+  <div id="toast" class="hud"></div>
+  <div id="paused">PAUSED</div>
+  <div id="start">
+    <h1>MARISOL BAY</h1>
+    <h2>AN OPEN-WORLD CRIME GAME</h2>
+    <p>One last job. Steal the Vantara GT from the Azure Pearl casino, outrun the
+    Marisol Bay Police Department through the Strand, Downtown and the Harbor, and
+    deliver the car to Pier 9. Your crew is on the channel: Vera the fixer, Mako
+    the driver, Gus the mechanic, Ivy the lookout.</p>
+    <button id="playBtn">▶&nbsp; START THE JOB</button>
+    <div class="keys">WASD drive / walk &nbsp;·&nbsp; SHIFT nitro &nbsp;·&nbsp; SPACE handbrake &nbsp;·&nbsp; E enter / exit car<br>
+    F steal car &nbsp;·&nbsp; Q weapon &nbsp;·&nbsp; Click fire &nbsp;·&nbsp; R restart mission &nbsp;·&nbsp; P pause &nbsp;·&nbsp; H save</div>
   </div>
 </div>
 <script type="module" src="./src/main.js"></script>

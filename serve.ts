@@ -1,64 +1,44 @@
-// Tiny static server for game/ (Node 22, standard library only).
-// `node serve.ts [--port 8080]` serves game/ on http://localhost:8080.
-// Refuses any path outside game/; nothing else.
-import { createReadStream, statSync } from 'node:fs';
+// MARISOL BAY — tiny static file server for local playtesting.
+// Usage: node serve.ts [--port 8080]
+// Serves the repository root so game/ is reachable at /game/ and the game
+// itself at /game/index.html. Standard library only.
+
 import { createServer } from 'node:http';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { createReadStream, existsSync, statSync } from 'node:fs';
+import { join, extname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = resolve(fileURLToPath(new URL('./game', import.meta.url)));
-const args = process.argv.slice(2);
-const portIndex = args.indexOf('--port');
-const requested = portIndex === -1 ? 8080 : Number(args[portIndex + 1]);
-const port = Number.isInteger(requested) && requested > 0 && requested < 65536 ? requested : 8080;
+const here = fileURLToPath(new URL('.', import.meta.url));
+const port = Number(process.argv[process.argv.indexOf('--port') + 1] ?? 8080);
 
 const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2',
-  '.txt': 'text/plain; charset=utf-8',
+  '.ts': 'text/plain',
 };
 
-createServer((request, response) => {
-  const url = new URL(request.url ?? '/', 'http://localhost');
-  let pathname;
-  try {
-    pathname = decodeURIComponent(url.pathname);
-  } catch {
-    response.writeHead(400).end('bad request');
+const server = createServer((req, res) => {
+  const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
+  const rel = normalize(urlPath === '/' ? '/game/index.html' : urlPath).replace(/^[/\\]+/, '');
+  // Try the repository root first, then game/ (so /index.html serves the game).
+  let file = join(here, rel);
+  if (!existsSync(file) || !statSync(file).isFile()) file = join(here, 'game', rel);
+  if (!file.startsWith(here) || !existsSync(file) || !statSync(file).isFile()) {
+    res.writeHead(404, { 'content-type': 'text/plain' });
+    res.end('not found\n');
     return;
   }
-  if (pathname.endsWith('/')) pathname += 'index.html';
-  const file = resolve(join(root, normalize(pathname)));
-  if (file !== root && !file.startsWith(root + sep)) {
-    response.writeHead(403).end('forbidden');
-    return;
-  }
-  let size;
-  try {
-    const stats = statSync(file);
-    if (!stats.isFile()) throw new Error('not a file');
-    size = stats.size;
-  } catch {
-    response.writeHead(404).end('not found');
-    return;
-  }
-  response.writeHead(200, {
-    'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
-    'content-length': size,
-    'cache-control': 'no-store',
-  });
-  createReadStream(file).pipe(response);
-}).listen(port, '127.0.0.1', () => {
-  console.log(`game/ is on http://localhost:${port}`);
+  res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
+  createReadStream(file).pipe(res);
+});
+
+server.listen(port, '127.0.0.1', () => {
+  console.log(`MARISOL BAY serving at http://127.0.0.1:${port}/game/index.html`);
 });

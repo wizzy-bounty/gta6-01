@@ -1,26 +1,38 @@
-// Keyboard + mouse state. One shared object, no framework.
-export const keys = Object.create(null);
-export const pressed = Object.create(null); // edge-triggered, consumed by game each frame
-export const mouse = { dx: 0, dy: 0, down: false };
+// MARISOL BAY — keyboard and mouse input state.
 
-export function bindInput() {
-  addEventListener('keydown', (e) => {
-    if (e.repeat) return;
-    keys[e.code] = true;
-    pressed[e.code] = true;
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
-  });
-  addEventListener('keyup', (e) => { keys[e.code] = false; });
-  addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-  addEventListener('mousedown', (e) => { mouse.down = true; });
-  addEventListener('mouseup', () => { mouse.down = false; });
-  addEventListener('mousemove', (e) => { mouse.dx += e.movementX || 0; mouse.dy += e.movementY || 0; });
+export class Input {
+  constructor() {
+    this.keys = new Set();
+    this.mouseDown = false;
+    this.mouseDX = 0;
+    this._onKeyDown = (e) => {
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+      this.keys.add(e.code);
+      this._presses.add(e.code);
+    };
+    this._onKeyUp = (e) => this.keys.delete(e.code);
+    this._onMouseDown = (e) => { this.mouseDown = true; this._presses.add('Mouse0'); };
+    this._onMouseUp = () => { this.mouseDown = false; };
+    this._onMouseMove = (e) => { this.mouseDX += e.movementX || 0; };
+    this._presses = new Set();
+    window.addEventListener('keydown', this._onKeyDown);
+    window.addEventListener('keyup', this._onKeyUp);
+    window.addEventListener('mousedown', this._onMouseDown);
+    window.addEventListener('mouseup', this._onMouseUp);
+    window.addEventListener('mousemove', this._onMouseMove);
+  }
+
+  down(...codes) {
+    return codes.some((c) => this.keys.has(c));
+  }
+
+  // True once per physical press; consumed by the game loop each frame.
+  pressed(code) {
+    return this._presses.has(code);
+  }
+
+  endFrame() {
+    this._presses.clear();
+    this.mouseDX = 0;
+  }
 }
-
-export function endFrameInput() {
-  for (const k in pressed) delete pressed[k];
-  mouse.dx = 0; mouse.dy = 0;
-}
-
-export function isDown(...codes) { return codes.some((c) => keys[c]); }
-export function wasPressed(...codes) { return codes.some((c) => pressed[c]); }

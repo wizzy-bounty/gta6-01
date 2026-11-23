@@ -1,126 +1,149 @@
-// Procedural canvas textures: building facades, neon signs, ground, sand.
-import * as THREE from '../vendor/three.module.min.js';
-import { mulberry32 } from './random.js';
+// MARISOL BAY — procedural canvas textures. Everything the city wears is
+// painted here in code; no image files are loaded at run time.
+import * as THREE from 'three';
+import { mulberry32, range, rangeInt } from './random.js';
 
-function canvas(w, h) {
+function canvasTexture(w, h, draw) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
-  return [c, c.getContext('2d')];
-}
-
-export function facadeTexture(seed, base, litRatio) {
-  const rng = mulberry32(seed);
-  const [c, g] = canvas(128, 256);
-  g.fillStyle = base; g.fillRect(0, 0, 128, 256);
-  // lighten the base so facades read in 3D instead of going silhouette-dark
-  g.fillStyle = 'rgba(255,255,255,0.16)'; g.fillRect(0, 0, 128, 256);
-  // subtle vertical shading
-  const grad = g.createLinearGradient(0, 0, 0, 256);
-  grad.addColorStop(0, 'rgba(255,255,255,0.10)'); grad.addColorStop(1, 'rgba(0,0,0,0.22)');
-  g.fillStyle = grad; g.fillRect(0, 0, 128, 256);
-  const cols = 5, rows = 11;
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      const lit = rng() < litRatio;
-      g.fillStyle = lit ? (rng() < 0.7 ? '#ffd98a' : '#9fd8ff') : '#1d2733';
-      g.fillRect(10 + x * 22, 12 + y * 22, 14, 13);
-      g.fillStyle = 'rgba(0,0,0,0.25)';
-      g.fillRect(10 + x * 22, 12 + y * 22 + 13, 14, 2);
-    }
-  }
-  // ground-floor shopfront
-  g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, 232, 128, 24);
-  g.fillStyle = '#ffd98a'; g.fillRect(8, 238, 112, 12);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-export function neonTexture(text, fg, bg) {
-  const [c, g] = canvas(512, 128);
-  g.fillStyle = bg; g.fillRect(0, 0, 512, 128);
-  g.font = 'bold 64px Arial, sans-serif';
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.shadowColor = fg; g.shadowBlur = 26;
-  g.fillStyle = fg; g.fillText(text, 256, 66);
-  g.shadowBlur = 6; g.fillStyle = '#ffffff';
-  g.fillText(text, 256, 66);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-export function groundTexture() {
-  // One 2048px top-down map of the whole city: asphalt roads, lane dashes,
-  // crosswalks, sidewalks, block fills, sand + ocean on the east edge.
-  const S = 2048, [c, g] = canvas(S, S);
-  const px = S / 640; // pixels per metre
-  const X = (x) => (x + 320) * px, Z = (z) => (z + 320) * px;
-  g.fillStyle = '#333a43'; g.fillRect(0, 0, S, S); // base asphalt (bright enough to read at dusk)
-  // sidewalk blocks
-  g.fillStyle = '#565e68';
-  for (let bx = -320; bx < 320; bx += 64) {
-    for (let bz = -320; bz < 320; bz += 64) {
-      if (bx + 64 > 236) continue; // beach side has no blocks
-      g.fillRect(X(bx + 7), Z(bz + 7), 50 * px, 50 * px);
-    }
-  }
-  // roads: vertical + horizontal grid
-  g.fillStyle = '#2a2f36';
-  for (let x = -320; x <= 320; x += 64) g.fillRect(X(x - 7), 0, 14 * px, S);
-  for (let z = -320; z <= 320; z += 64) g.fillRect(0, Z(z - 7), S, 14 * px);
-  // centre dashes
-  g.fillStyle = '#e8d25a';
-  for (let x = -320; x <= 320; x += 64) {
-    for (let z = -320; z < 320; z += 16) g.fillRect(X(x) - 1, Z(z), 2, 8 * px);
-  }
-  for (let z = -320; z <= 320; z += 64) {
-    for (let x = -320; x < 320; x += 16) g.fillRect(X(x), Z(z) - 1, 8 * px, 2);
-  }
-  // crosswalks at intersections
-  g.fillStyle = '#d8dce2';
-  for (let x = -320; x <= 320; x += 64) {
-    for (let z = -320; z <= 320; z += 64) {
-      for (let i = 0; i < 5; i++) {
-        g.fillRect(X(x - 7 + i * 3), Z(z - 11), 2 * px, 4 * px);
-        g.fillRect(X(x - 7 + i * 3), Z(z + 7), 2 * px, 4 * px);
-      }
-    }
-  }
-  // beach sand + wet edge + ocean
-  g.fillStyle = '#d9b380'; g.fillRect(X(236), 0, (320 - 236) * px, S);
-  g.fillStyle = '#c9a06a';
-  for (let i = 0; i < 900; i++) {
-    const rng = mulberry32(1000 + i);
-    g.fillRect(X(236 + rng() * 84), rng() * S, 2, 2);
-  }
-  const og = g.createLinearGradient(X(292), 0, S, 0);
-  og.addColorStop(0, '#2f8fb5'); og.addColorStop(0.4, '#1d6f96'); og.addColorStop(1, '#155a80');
-  g.fillStyle = og; g.fillRect(X(292), 0, S - X(292), S);
-  // foam line
-  g.fillStyle = 'rgba(255,255,255,0.55)';
-  for (let z = 0; z < S; z += 26) g.fillRect(X(291), z, 3, 14);
-  // pier at z ~ 190
-  g.fillStyle = '#6b4a2f'; g.fillRect(X(236), Z(184), (320 - 236) * px, 12 * px);
+  draw(c.getContext('2d'), w, h);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
   return tex;
 }
 
-export function oceanTexture() {
-  const [c, g] = canvas(256, 256);
-  g.fillStyle = '#1d6f96'; g.fillRect(0, 0, 256, 256);
-  const rng = mulberry32(77);
-  for (let i = 0; i < 260; i++) {
-    g.strokeStyle = `rgba(255,255,255,${0.05 + rng() * 0.16})`;
-    g.lineWidth = 1 + rng() * 2;
-    const y = rng() * 256;
-    g.beginPath(); g.moveTo(rng() * 100, y); g.lineTo(120 + rng() * 136, y + (rng() - 0.5) * 8); g.stroke();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(6, 6);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+function hex(n) {
+  return '#' + n.toString(16).padStart(6, '0');
 }
+
+// A building facade: base colour, lit window grid, a darker ground floor with
+// a shopfront band. District palettes keep the Strand pastel, Downtown neon-dark
+// and the Harbor industrial.
+export function facadeTexture(seed, baseColor, night) {
+  const rng = mulberry32(seed);
+  return canvasTexture(256, 256, (g, w, h) => {
+    g.fillStyle = hex(baseColor);
+    g.fillRect(0, 0, w, h);
+    // subtle vertical shading strips
+    for (let x = 0; x < w; x += 32) {
+      g.fillStyle = rng() > 0.5 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)';
+      g.fillRect(x, 0, 32, h);
+    }
+    // window grid
+    const cols = 6, rows = 9;
+    const cw = w / cols, rh = h / rows;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const lit = rng() < (night ? 0.55 : 0.22);
+        const warm = rng() > 0.5;
+        g.fillStyle = lit
+          ? (warm ? 'rgba(255,214,120,0.95)' : 'rgba(160,220,255,0.9)')
+          : 'rgba(10,14,22,0.85)';
+        g.fillRect(c * cw + 6, r * rh + 7, cw - 12, rh - 13);
+      }
+    }
+    // ground floor shopfront
+    g.fillStyle = 'rgba(0,0,0,0.35)';
+    g.fillRect(0, h - 34, w, 34);
+    g.fillStyle = 'rgba(255,220,120,0.85)';
+    g.fillRect(14, h - 28, w - 28, 20);
+    g.fillStyle = 'rgba(0,0,0,0.55)';
+    g.font = 'bold 13px sans-serif';
+    g.fillText('MARISOL', 20, h - 14);
+  });
+}
+
+// Asphalt with a dashed centre line and edge lines.
+export function roadTexture() {
+  return canvasTexture(128, 256, (g, w, h) => {
+    g.fillStyle = '#33363d';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = 'rgba(255,255,255,0.16)';
+    for (let y = 0; y < h; y += 64) g.fillRect(0, y, 4, 6), g.fillRect(w - 4, y, 4, 6);
+    g.fillStyle = '#e8c93a';
+    for (let y = 0; y < h; y += 42) g.fillRect(w / 2 - 2, y, 4, 22);
+  });
+}
+
+// Warm sand with speckles.
+export function sandTexture(seed) {
+  const rng = mulberry32(seed);
+  return canvasTexture(256, 256, (g, w, h) => {
+    g.fillStyle = '#e8d9a8';
+    g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 900; i++) {
+      g.fillStyle = rng() > 0.5 ? 'rgba(180,150,90,0.35)' : 'rgba(255,245,210,0.4)';
+      g.fillRect(rng() * w, rng() * h, 2, 2);
+    }
+  });
+}
+
+// Sea surface: deep turquoise with lighter wave streaks.
+export function seaTexture(seed) {
+  const rng = mulberry32(seed);
+  return canvasTexture(256, 256, (g, w, h) => {
+    g.fillStyle = '#1e7fa8';
+    g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 60; i++) {
+      g.strokeStyle = `rgba(190,235,255,${0.12 + rng() * 0.25})`;
+      g.lineWidth = 2 + rng() * 3;
+      g.beginPath();
+      const y = rng() * h;
+      g.moveTo(0, y);
+      g.bezierCurveTo(w * 0.3, y + range(rng, -8, 8), w * 0.7, y + range(rng, -8, 8), w, y);
+      g.stroke();
+    }
+  });
+}
+
+// A glowing neon sign board (emissive material pairs with this texture).
+export function neonTexture(text, color) {
+  return canvasTexture(512, 128, (g, w, h) => {
+    g.fillStyle = '#0a0614';
+    g.fillRect(0, 0, w, h);
+    g.strokeStyle = color;
+    g.lineWidth = 6;
+    g.strokeRect(8, 8, w - 16, h - 16);
+    g.fillStyle = color;
+    g.font = 'bold 64px "Trebuchet MS", sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.shadowColor = color;
+    g.shadowBlur = 26;
+    g.fillText(text, w / 2, h / 2 + 2);
+  });
+}
+
+// Container side: corrugated stripes + stencil label.
+export function containerTexture(seed, baseColor, label) {
+  const rng = mulberry32(seed);
+  return canvasTexture(256, 128, (g, w, h) => {
+    g.fillStyle = hex(baseColor);
+    g.fillRect(0, 0, w, h);
+    for (let x = 0; x < w; x += 16) {
+      g.fillStyle = 'rgba(0,0,0,0.18)';
+      g.fillRect(x, 0, 5, h);
+    }
+    g.fillStyle = 'rgba(255,255,255,0.85)';
+    g.font = 'bold 34px sans-serif';
+    g.textAlign = 'center';
+    g.fillText(label, w / 2, h / 2 + 12);
+    void rng;
+  });
+}
+
+export function billboardTexture(text, bg, fg) {
+  return canvasTexture(512, 256, (g, w, h) => {
+    g.fillStyle = bg;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = fg;
+    g.font = 'bold 72px "Trebuchet MS", sans-serif';
+    g.textAlign = 'center';
+    g.fillText(text, w / 2, h / 2 - 8);
+    g.font = '28px "Trebuchet MS", sans-serif';
+    g.fillText('MARISOL BAY', w / 2, h / 2 + 52);
+  });
+}
+
+export { rangeInt };
