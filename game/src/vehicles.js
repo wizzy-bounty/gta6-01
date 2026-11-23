@@ -1,241 +1,238 @@
-// NEON TIDE — vehicles.js: car factory, arcade driving physics, car drawing.
-// Cars are top-down rectangles with a roof, glass, wheels and headlights;
-// police cars get the PSPD livery and a light bar. Physics is deliberately
-// arcade: throttle, brake/reverse, handbrake drift, nitro, building and
-// car-to-car bumps that trade paint and health.
+// Cars + helicopter: low-poly box builds, arcade physics, traffic + police driving.
+import * as THREE from '../vendor/three.module.min.js';
+import { mulberry32, pick, range, int, chance, clamp, angleLerp } from './random.js';
+import { collideCircle, clampToCity } from './world.js';
 
-import { VEHICLE_TYPES } from './config.js';
-import { clamp, wrapAngle } from './random.js';
-import { collideBuildings } from './city.js';
-
-let nextCarId = 1;
-
-export function createCar(type, x, y, angle, color) {
-  const spec = VEHICLE_TYPES[type];
-  return {
-    id: nextCarId++,
-    type, spec,
-    x, y, angle,
-    speed: 0,
-    steer: 0,
-    color,
-    health: spec.health,
-    maxHealth: spec.health,
-    nitro: 0.5,
-    driver: null, // 'player' | 'traffic' | 'police' | 'racer' | null (parked)
-    parked: false,
-    lightsOn: true,
-    sirenPhase: Math.random() * Math.PI * 2,
-    tireDamage: 0, // 0..1 from spike strips
-    wrecked: false,
-  };
+function box(w, h, d, color, opts = {}) {
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshLambertMaterial({ color, emissive: opts.emissive || 0x000000, emissiveIntensity: opts.ei || 1 }),
+  );
+  m.castShadow = true;
+  return m;
 }
 
-export function applyUpgrades(car, upgrades) {
-  const e = upgrades.engine ?? 0;
-  const a = upgrades.armor ?? 0;
-  const n = upgrades.nitro ?? 0;
-  car.maxHealth = car.spec.health + a * 40;
-  car.health = Math.min(car.health, car.maxHealth);
-  car.tune = { accelMul: 1 + e * 0.12, topMul: 1 + e * 0.12, nitroLevel: n };
+export function makeCarMesh(color, opts = {}) {
+  const g = new THREE.Group();
+  const body = box(2.0, 0.62, 4.4, color, { emissive: color, ei: 0.22 });
+  body.position.y = 0.55;
+  g.add(body);
+  const cabin = box(1.7, 0.55, 2.2, 0x18242e, { emissive: 0x0a1420, ei: 0.6 });
+  cabin.position.set(0, 1.1, -0.25);
+  g.add(cabin);
+  const nose = box(1.9, 0.34, 0.7, color, { emissive: color, ei: 0.22 });
+  nose.position.set(0, 0.5, 2.35);
+  g.add(nose);
+  // headlights / taillights
+  const hl = new THREE.MeshBasicMaterial({ color: 0xfff6c8 });
+  for (const sx of [-0.65, 0.65]) {
+    const h = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.16, 0.08), hl);
+    h.position.set(sx, 0.55, 2.72); g.add(h);
+    const t = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.16, 0.08), new THREE.MeshBasicMaterial({ color: 0xff2a22 }));
+    t.position.set(sx, 0.55, -2.22); g.add(t);
+  }
+  // wheels
+  const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.3, 10);
+  const wheelMat = new THREE.MeshLambertMaterial({ color: 0x14161a });
+  const wheels = [];
+  for (const [wx, wz] of [[-0.95, 1.45], [0.95, 1.45], [-0.95, -1.45], [0.95, -1.45]]) {
+    const w = new THREE.Mesh(wheelGeo, wheelMat);
+    w.rotation.z = Math.PI / 2;
+    w.position.set(wx, 0.38, wz);
+    g.add(w); wheels.push(w);
+  }
+  if (opts.police) {
+    // light bar + push bar + black doors hint
+    const bar = box(1.5, 0.16, 0.5, 0x222222);
+    bar.position.set(0, 1.42, -0.25); g.add(bar);
+    const red = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.18, 0.52), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
+    red.position.set(-0.38, 1.44, -0.25); g.add(red);
+    const blue = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.18, 0.52), new THREE.MeshBasicMaterial({ color: 0x2050ff }));
+    blue.position.set(0.38, 1.44, -0.25); g.add(blue);
+    g.userData.flash = { red, blue };
+    const push = box(1.7, 0.3, 0.18, 0x1a1d20);
+    push.position.set(0, 0.5, 2.78); g.add(push);
+    const door = box(2.02, 0.5, 1.1, 0x1a1d20);
+    door.position.set(0, 0.62, -0.1); g.add(door);
+  }
+  if (opts.taxi) {
+    const sign = box(0.9, 0.22, 0.5, 0xffc21c, { emissive: 0xffc21c, ei: 0.5 });
+    sign.position.set(0, 1.5, -0.25); g.add(sign);
+  }
+  g.userData.wheels = wheels;
+  return g;
 }
 
-export function carRadius(car) {
-  return car.spec.h * 0.42;
-}
-
-// input: {throttle -1..1, steer -1..1, handbrake, nitro}
-export function updateCar(car, input, dt, city) {
-  if (car.wrecked) {
-    car.speed = 0;
-    return;
+export class Car {
+  constructor(mesh, x, z, heading, spec) {
+    this.mesh = mesh;
+    this.x = x; this.z = z; this.heading = heading;
+    this.speed = 0; this.steer = 0;
+    this.spec = spec; // {accel, topSpeed, turn, name, color}
+    this.damage = 0; // 0..1
+    this.stuck = 0;
   }
-  const tune = car.tune ?? { accelMul: 1, topMul: 1, nitroLevel: 0 };
-  const tireMul = 1 - car.tireDamage * 0.45;
-  const topSpeed = car.spec.maxSpeed * tune.topMul * tireMul;
-  const accel = car.spec.accel * tune.accelMul;
+  get forward() { return { x: Math.sin(this.heading), z: Math.cos(this.heading) }; }
+  get pos() { return { x: this.x, z: this.z }; }
 
-  let boosting = false;
-  if (input.nitro && tune.nitroLevel > 0 && car.nitro > 0.02 && input.throttle > 0) {
-    boosting = true;
-    car.nitro = Math.max(0, car.nitro - dt * 0.45);
-    car.speed += accel * 1.15 * dt;
-  } else {
-    car.nitro = Math.min(1, car.nitro + dt * 0.03);
+  // Arcade drive: throttle -1..1, steer -1..1, dt seconds.
+  drive(throttle, steer, dt, colliders) {
+    const s = this.spec;
+    const accel = throttle > 0 ? s.accel : s.accel * 0.7;
+    this.speed += throttle * accel * dt;
+    // drag + rolling resistance
+    this.speed -= this.speed * 0.55 * dt;
+    if (throttle === 0) this.speed -= Math.sign(this.speed) * 6 * dt;
+    this.speed = clamp(this.speed, -s.topSpeed * 0.45, s.topSpeed);
+    if (Math.abs(this.speed) < 0.05 && throttle === 0) this.speed = 0;
+    const steerTarget = steer * s.turn * clamp(Math.abs(this.speed) / 14, 0.25, 1) * Math.sign(this.speed || 1);
+    this.heading += steerTarget * dt * (this.speed >= 0 ? 1 : -1);
+    const f = this.forward;
+    let nx = this.x + f.x * this.speed * dt;
+    let nz = this.z + f.z * this.speed * dt;
+    const hit = collideCircle(colliders, nx, nz, 2.1);
+    if (hit.x !== nx || hit.z !== nz) {
+      // scrape: lose speed, take damage
+      if (Math.abs(this.speed) > 8) this.damage = Math.min(1, this.damage + 0.02);
+      this.speed *= 0.55;
+    }
+    nx = hit.x; nz = hit.z;
+    const c = clampToCity(nx, nz);
+    this.x = c.x; this.z = c.z;
+    this.mesh.position.set(this.x, 0, this.z);
+    this.mesh.rotation.y = this.heading;
+    // wheel spin + body lean
+    const spin = this.speed * dt * 2.2;
+    for (const w of this.mesh.userData.wheels) w.rotation.x += spin;
+    this.mesh.rotation.z = -steer * clamp(Math.abs(this.speed) / 30, 0, 1) * 0.05;
   }
 
-  if (input.throttle > 0) {
-    car.speed += accel * input.throttle * dt * (car.speed < 0 ? 2.2 : 1);
-  } else if (input.throttle < 0) {
-    car.speed += accel * input.throttle * dt * (car.speed > 0 ? 2.4 : 0.55);
-  }
-  const drag = input.handbrake ? 2.6 : 0.55;
-  car.speed -= car.speed * drag * dt * 0.42;
-  if (!input.throttle && Math.abs(car.speed) < 4) car.speed = 0;
-  car.speed = clamp(car.speed, -topSpeed * 0.38, topSpeed * (boosting ? 1.3 : 1));
-
-  const speedRatio = clamp(Math.abs(car.speed) / 120, 0, 1);
-  const steerTarget = (input.steer ?? 0) * 0.62 * speedRatio;
-  car.steer += (steerTarget - car.steer) * Math.min(1, dt * 7);
-  const drift = input.handbrake ? 1.7 : 1;
-  car.angle += car.steer * (car.speed / 46) * car.spec.grip * 0.24 * drift * dt * 3.2;
-  car.angle = wrapAngle(car.angle);
-
-  const vx = Math.cos(car.angle - Math.PI / 2) * car.speed;
-  const vy = Math.sin(car.angle - Math.PI / 2) * car.speed;
-  car.x += vx * dt;
-  car.y += vy * dt;
-  const before = { x: car.x, y: car.y };
-  collideBuildings(city, car, carRadius(car) * 0.72);
-  if (Math.abs(car.x - before.x) + Math.abs(car.y - before.y) > 0.6 && Math.abs(car.speed) > 90) {
-    damageCar(car, Math.abs(car.speed) * 0.045, null);
-    car.speed *= -0.25;
-  }
-  car.boosting = boosting;
-}
-
-export function damageCar(car, amount, sparks) {
-  if (car.wrecked) return;
-  car.health -= amount;
-  if (sparks) sparks.push({ x: car.x, y: car.y, n: 6 });
-  if (car.health <= 0) {
-    car.health = 0;
-    car.wrecked = true;
-    car.speed = 0;
+  // Simple seek steering toward a point (police / traffic).
+  seek(tx, tz, dt, colliders, speed01 = 1) {
+    const dx = tx - this.x, dz = tz - this.z;
+    const want = Math.atan2(dx, dz);
+    let d = want - this.heading;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    const steer = clamp(d * 1.6, -1, 1);
+    this.drive(speed01, steer, dt, colliders);
   }
 }
 
-export function bumpCars(a, b) {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const d = Math.hypot(dx, dy);
-  const min = carRadius(a) * 0.8 + carRadius(b) * 0.8;
-  if (d === 0 || d >= min) return 0;
-  const push = (min - d) / 2;
-  const nx = dx / d;
-  const ny = dy / d;
-  a.x -= nx * push;
-  a.y -= ny * push;
-  b.x += nx * push;
-  b.y += ny * push;
-  const impact = Math.abs(a.speed - b.speed);
-  const transfer = (a.speed + b.speed) / 2;
-  if (Math.abs(a.speed) > Math.abs(b.speed)) b.speed = transfer * 0.9;
-  else a.speed = transfer * 0.9;
-  if (impact > 60) {
-    damageCar(a, impact * 0.05, null);
-    damageCar(b, impact * 0.05, null);
+// ---- traffic: cars cruising the road grid ----
+export class Traffic {
+  constructor(scene, colliders) {
+    this.cars = [];
+    this.colliders = colliders;
+    const rng = mulberry32(4242);
+    const kinds = [
+      { color: 0x4a6fa5, name: 'Marisol Sedan' },
+      { color: 0xc23b4e, name: 'Strand Coupe' },
+      { color: 0xffc21c, name: 'Bay Cab', taxi: true },
+      { color: 0x8a8f96, name: 'Harbor Van' },
+      { color: 0x3f7a4a, name: 'Palm Taxi' },
+      { color: 0xd8d3c8, name: 'Coast Cruiser' },
+    ];
+    for (let i = 0; i < 26; i++) {
+      const k = pick(rng, kinds);
+      const mesh = makeCarMesh(k.color, { taxi: k.taxi });
+      scene.add(mesh);
+      const horizontal = chance(rng, 0.5);
+      const road = int(rng, -5, 5) * 64;
+      const along = range(rng, -300, 300);
+      const dir = chance(rng, 0.5) ? 1 : -1;
+      const car = new Car(mesh, horizontal ? along : road + (dir > 0 ? 3.5 : -3.5), horizontal ? road + (dir > 0 ? 3.5 : -3.5) : along,
+        horizontal ? (dir > 0 ? Math.PI / 2 : -Math.PI / 2) : (dir > 0 ? 0 : Math.PI),
+        { accel: 10, topSpeed: range(rng, 11, 17), turn: 1.4, name: k.name, color: k.color });
+      car.horizontal = horizontal;
+      car.road = road;
+      car.dir = dir;
+      car.speed = car.spec.topSpeed * 0.8;
+      this.cars.push(car);
+    }
   }
-  return impact;
+  // Extra traffic right around the player for dense screenshots.
+  addNear(scene, x, z, heading, count = 4) {
+    const rng = mulberry32(99);
+    const kinds = [
+      { color: 0x4a6fa5 }, { color: 0xc23b4e }, { color: 0xffc21c, taxi: true },
+      { color: 0x8a8f96 }, { color: 0x3f7a4a }, { color: 0xd8d3c8 },
+    ];
+    const fx = Math.sin(heading), fz = Math.cos(heading);
+    const rx = Math.cos(heading), rz = -Math.sin(heading);
+    for (let i = 0; i < count; i++) {
+      const k = pick(rng, kinds);
+      const mesh = makeCarMesh(k.color, { taxi: k.taxi });
+      scene.add(mesh);
+      const ahead = 30 + i * 18 + range(rng, -3, 3);
+      const lane = (i % 2 === 0 ? 3.5 : -3.5) + range(rng, -0.5, 0.5);
+      const car = new Car(mesh, x + fx * ahead + rx * lane, z + fz * ahead + rz * lane, heading,
+        { accel: 10, topSpeed: range(rng, 11, 15), turn: 1.4, name: 'Traffic', color: k.color });
+      car.horizontal = Math.abs(fx) > 0.5;
+      car.road = car.horizontal ? Math.round(car.z / 64) * 64 : Math.round(car.x / 64) * 64;
+      car.dir = 1;
+      car.speed = car.spec.topSpeed * 0.95;
+      this.cars.push(car);
+    }
+  }
+
+  update(dt) {
+    for (const c of this.cars) {
+      // drive along current road; at intersections sometimes turn
+      const atJunction = (v) => Math.abs(((v % 64) + 64) % 64) < 3 || Math.abs(((v % 64) + 64) % 64 - 64) < 3;
+      const along = c.horizontal ? c.x : c.z;
+      if (atJunction(along) && Math.random() < 0.006) {
+        // turn onto the crossing road
+        c.horizontal = !c.horizontal;
+        c.road = Math.round(along / 64) * 64;
+        c.dir = Math.random() < 0.5 ? 1 : -1;
+        c.heading = c.horizontal ? (c.dir > 0 ? Math.PI / 2 : -Math.PI / 2) : (c.dir > 0 ? 0 : Math.PI);
+      }
+      // keep on the road lane
+      const f = c.forward;
+      c.x += f.x * c.speed * dt;
+      c.z += f.z * c.speed * dt;
+      if (c.horizontal) c.z += (c.road + (c.dir > 0 ? 3.5 : -3.5) - c.z) * 0.1;
+      else c.x += (c.road + (c.dir > 0 ? 3.5 : -3.5) - c.x) * 0.1;
+      const cl = clampToCity(c.x, c.z);
+      if (cl.x !== c.x || cl.z !== c.z) { c.dir *= -1; c.heading += Math.PI; c.x = cl.x; c.z = cl.z; }
+      const hit = collideCircle(this.colliders, c.x, c.z, 2.1);
+      c.x = hit.x; c.z = hit.z;
+      c.mesh.position.set(c.x, 0, c.z);
+      c.mesh.rotation.y = c.heading;
+      for (const w of c.mesh.userData.wheels) w.rotation.x += c.speed * dt * 2.2;
+    }
+  }
 }
 
-export function speedKmh(car) {
-  return Math.round(Math.abs(car.speed) * 0.62);
-}
-
-export function gearOf(car) {
-  if (car.speed < -2) return 'R';
-  const s = Math.abs(car.speed);
-  if (s < 4) return 'N';
-  return String(Math.min(6, 1 + Math.floor(s / 68)));
-}
-
-export function drawCar(ctx, car, time) {
-  const { w, h } = car.spec;
-  ctx.save();
-  ctx.translate(car.x, car.y);
-  ctx.rotate(car.angle);
-  // Headlight cones (dusk).
-  if (car.lightsOn && !car.wrecked) {
-    const grad = ctx.createLinearGradient(0, -h / 2, 0, -h / 2 - 120);
-    grad.addColorStop(0, 'rgba(255,240,190,0.20)');
-    grad.addColorStop(1, 'rgba(255,240,190,0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.moveTo(-w * 0.3, -h / 2);
-    ctx.lineTo(-w * 0.62, -h / 2 - 120);
-    ctx.lineTo(-w * 0.02, -h / 2 - 120);
-    ctx.closePath(); ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(w * 0.3, -h / 2);
-    ctx.lineTo(w * 0.02, -h / 2 - 120);
-    ctx.lineTo(w * 0.62, -h / 2 - 120);
-    ctx.closePath(); ctx.fill();
-  }
-  // Shadow + body.
-  ctx.fillStyle = 'rgba(0,0,0,0.4)';
-  ctx.fillRect(-w / 2 + 3, -h / 2 + 5, w, h);
-  ctx.fillStyle = car.wrecked ? '#3a3a3a' : car.color;
-  roundRect(ctx, -w / 2, -h / 2, w, h, 8);
-  ctx.fill();
-  // Hood + trunk shading.
-  ctx.fillStyle = 'rgba(255,255,255,0.10)';
-  ctx.fillRect(-w / 2 + 3, -h / 2 + 4, w - 6, h * 0.2);
-  ctx.fillStyle = 'rgba(0,0,0,0.18)';
-  ctx.fillRect(-w / 2 + 3, h / 2 - h * 0.2 - 4, w - 6, h * 0.2);
-  // Glasshouse.
-  ctx.fillStyle = '#141c26';
-  roundRect(ctx, -w / 2 + 5, -h * 0.18, w - 10, h * 0.4, 5);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(140,210,255,0.35)';
-  ctx.fillRect(-w / 2 + 6, -h * 0.18, w - 12, 5);
-  // Wheels.
-  ctx.fillStyle = '#0c0c0e';
-  const ww = 6;
-  const wh = 13;
-  ctx.fillRect(-w / 2 - 2, -h / 2 + 7, ww, wh);
-  ctx.fillRect(w / 2 - ww + 2, -h / 2 + 7, ww, wh);
-  ctx.fillRect(-w / 2 - 2, h / 2 - 7 - wh, ww, wh);
-  ctx.fillRect(w / 2 - ww + 2, h / 2 - 7 - wh, ww, wh);
-  // Lights.
-  ctx.fillStyle = '#fff3c4';
-  ctx.fillRect(-w / 2 + 4, -h / 2, 7, 4);
-  ctx.fillRect(w / 2 - 11, -h / 2, 7, 4);
-  ctx.fillStyle = '#ff3b30';
-  ctx.fillRect(-w / 2 + 4, h / 2 - 4, 7, 4);
-  ctx.fillRect(w / 2 - 11, h / 2 - 4, 7, 4);
-  if (car.type === 'police') {
-    ctx.fillStyle = '#101216';
-    ctx.fillRect(-w / 2, -h * 0.05, w, h * 0.34);
-    ctx.fillStyle = '#f2f2f2';
-    ctx.font = 'bold 9px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('PSPD', 0, h * 0.18);
-    const phase = Math.sin(time * 14 + car.sirenPhase) > 0;
-    ctx.fillStyle = phase ? '#ff2d2d' : '#2d7bff';
-    ctx.shadowColor = ctx.fillStyle;
-    ctx.shadowBlur = 14;
-    ctx.fillRect(-w / 2 + 5, -4, w - 10, 8);
-    ctx.shadowBlur = 0;
-  }
-  if (car.boosting) {
-    ctx.fillStyle = 'rgba(90,200,255,0.8)';
-    ctx.beginPath();
-    ctx.moveTo(-6, h / 2);
-    ctx.lineTo(0, h / 2 + 16 + Math.random() * 8);
-    ctx.lineTo(6, h / 2);
-    ctx.closePath(); ctx.fill();
-  }
-  if (car.health < car.maxHealth * 0.35 && !car.wrecked) {
-    ctx.fillStyle = 'rgba(200,200,200,0.5)';
-    ctx.beginPath();
-    ctx.arc(0, -h / 2 + 6, 6 + Math.random() * 3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  if (car.wrecked) {
-    ctx.fillStyle = 'rgba(20,20,20,0.55)';
-    roundRect(ctx, -w / 2, -h / 2, w, h, 8);
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+// ---- helicopter ----
+export function makeHeli() {
+  const g = new THREE.Group();
+  // MBPD white + blue so the heli reads against a night sky
+  const body = box(3.2, 1.4, 5.2, 0xdfe6ee, { emissive: 0xdfe6ee, ei: 0.18 });
+  body.position.y = 0; g.add(body);
+  const band = box(3.26, 0.34, 5.26, 0x2050ff, { emissive: 0x2050ff, ei: 0.45 });
+  band.position.y = 0.1; g.add(band);
+  const tail = box(0.7, 0.7, 4.6, 0xdfe6ee, { emissive: 0xdfe6ee, ei: 0.18 });
+  tail.position.set(0, 0.25, -4.2); g.add(tail);
+  const glass = box(2.6, 0.8, 1.6, 0x9fd8e8, { emissive: 0x3a7a9a, ei: 0.4 });
+  glass.position.set(0, 0.3, 2.2); g.add(glass);
+  const beacon = box(0.34, 0.3, 0.34, 0xff2020, { emissive: 0xff2020, ei: 1 });
+  beacon.position.set(0, 0.95, 0); g.add(beacon);
+  const skidL = box(0.18, 0.18, 4.4, 0x111418); skidL.position.set(-1.1, -1.0, 0.4); g.add(skidL);
+  const skidR = skidL.clone(); skidR.position.x = 1.1; g.add(skidR);
+  const rotor = new THREE.Group();
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(11, 0.12, 0.7), new THREE.MeshLambertMaterial({ color: 0x8a9098 }));
+  rotor.add(blade);
+  const blade2 = blade.clone(); blade2.rotation.y = Math.PI / 2; rotor.add(blade2);
+  rotor.position.y = 1.1; g.add(rotor);
+  // searchlight cone: narrow at the heli, wide pool on the street below
+  const coneMat = new THREE.MeshBasicMaterial({ color: 0xfff6c8, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false });
+  const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 10, 26, 16, 1, true), coneMat);
+  cone.position.y = -13;
+  g.add(cone);
+  g.userData.rotor = rotor;
+  g.userData.cone = cone;
+  g.scale.setScalar(1.3); // read clearly in screenshots
+  return g;
 }
